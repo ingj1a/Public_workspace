@@ -9,7 +9,7 @@ namespace {
 int failures = 0;
 void Expect(bool condition, const char* message) {
     if (!condition) {
-        std::cerr << "FAIL: " << message << '\\n';
+        std::cerr << "FAIL: " << message << '\n';
         ++failures;
     }
 }
@@ -36,9 +36,9 @@ int main() {
     Expect(unknown.candidates.empty(), "unknown Pinyin should return no candidates");
 
     if (failures == 0) {
-        std::cout << "All core contract tests passed.\\n";
+        std::cout << "All core contract tests passed.\n";
         return EXIT_SUCCESS;
     }
-    std::cerr << failures << " test(s) failed.\\n";
+    std::cerr << failures << " test(s) failed.\n";
     return EXIT_FAILURE;
 }
