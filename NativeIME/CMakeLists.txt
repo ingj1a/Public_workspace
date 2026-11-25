@@ -29,7 +29,7 @@ if(WIN32)
         src/windows/NativeIME.def
     )
     target_compile_definitions(nativeime_tsf PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
-    target_link_libraries(nativeime_tsf PRIVATE ole32 advapi32 msctf)
+    target_link_libraries(nativeime_tsf PRIVATE ole32 advapi32 uuid)
     set_target_properties(nativeime_tsf PROPERTIES
         OUTPUT_NAME "NativeIME.TSF"
         CXX_VISIBILITY_PRESET hidden
