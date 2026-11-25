@@ -113,7 +113,12 @@
       "id": "TEST-IPC-001",
       "status": "NOT_RUN",
       "scope": "Versioned bounded IPC frame round-trip, malformed frame rejection; CI pending."
+    },
+    {
+      "id": "TEST-IPC-TSF",
+      "status": "NOT_RUN",
+      "scope": "Async TSF candidate delivery and raw fallback; live E2E and security review pending."
     }
   ],
-  "evidenceLevel": "L2 for previous commit cdbe524; isolated Rime IPC service/client and protocol changes are new and pending CI; no live TSF/third-party application E2E."
+  "evidenceLevel": "Previous native and Rime baseline passed; new IPC and TSF async path pending CI and live E2E."
 }

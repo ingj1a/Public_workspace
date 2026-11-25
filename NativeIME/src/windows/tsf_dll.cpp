@@ -11,6 +11,8 @@
 #include "core/input_session.hpp"
 #include "focus_context.hpp"
 #include "tsf_popup.hpp"
+#include "async_engine.hpp"
+#include <memory>
 #include <textstor.h>
 #include <cwchar>
 #endif
@@ -76,6 +78,7 @@ public:
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         if(SUCCEEDED(hr)){
             app_=nativeime::win::CurrentApplication();
+            if(!secure_) StartEngine();
             ITfSource* source=nullptr;
             if(SUCCEEDED(threadManager_->QueryInterface(IID_PPV_ARGS(&source)))){
                 source->AdviseSink(IID_ITfThreadMgrEventSink,static_cast<ITfThreadMgrEventSink*>(this),&focusCookie_);
@@ -92,6 +95,7 @@ public:
     }
     STDMETHODIMP Deactivate() override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
+        StopEngine();
         popup_.Destroy();
         FinishRaw();
         if(threadManager_&&focusCookie_!=TF_INVALID_COOKIE){
@@ -117,7 +121,7 @@ public:
 
     STDMETHODIMP OnSetFocus(BOOL foreground) override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
-        if (!foreground) { popup_.Hide(); FinishRaw(); }
+        if (!foreground) { InvalidateQuery(); popup_.Hide(); FinishRaw(); }
 #else
         (void)foreground;
 #endif
@@ -129,19 +133,19 @@ public:
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         // Do not request a write lock during a document-focus notification.
         // Hide immediately; the next key/context termination handles cleanup.
-        popup_.Hide();
+        InvalidateQuery(); popup_.Hide();
 #endif
         return S_OK;
     }
     STDMETHODIMP OnPushContext(ITfContext*) override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
-        popup_.Hide();
+        InvalidateQuery(); popup_.Hide();
 #endif
         return S_OK;
     }
     STDMETHODIMP OnPopContext(ITfContext*) override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
-        popup_.Hide();
+        InvalidateQuery(); popup_.Hide();
 #endif
         return S_OK;
     }
@@ -191,6 +195,10 @@ public:
             if (hr == S_OK) {
                 session_ = std::move(next);
                 *eaten = TRUE;
+                if(event.key==Key::Letter||event.key==Key::Backspace){
+                    InvalidateQuery();
+                    if(engine_&&composition_&&!session_.Preedit().empty())engine_->Submit(generation_,session_.Preedit());
+                }
                 if(anchorValid_&&composition_&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_)
                     popup_.Show(GetFocus(),anchor_,session_);
                 else popup_.Hide();
@@ -223,7 +231,44 @@ private:
     using KeyEvent = nativeime::core::KeyEvent;
     using Session = nativeime::core::InputSession;
     using Result = nativeime::core::InputResult;
-    Session session_;
+    Session session_{[](const std::wstring& input){return nativeime::core::QueryResult{input,{}};}};
+    std::unique_ptr<nativeime::win::AsyncEngine> engine_;
+    HWND engineWindow_=nullptr;
+    unsigned long long generation_=0;
+    bool windowClassOwned_=false;
+    wchar_t engineClass_[96]{};
+    void InvalidateQuery() noexcept {++generation_;if(engine_)engine_->Cancel();}
+    static LRESULT CALLBACK EngineWndProc(HWND hwnd,UINT msg,WPARAM w,LPARAM l){
+        if(msg==WM_NCCREATE){auto* cs=reinterpret_cast<CREATESTRUCTW*>(l);SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(cs->lpCreateParams));}
+        auto* self=reinterpret_cast<NativeTextService*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
+        if(msg==nativeime::win::EngineReady&&self){self->OnEngineReply();return 0;}
+        return DefWindowProcW(hwnd,msg,w,l);
+    }
+    void StartEngine() noexcept {
+        try{
+            if(engine_)return;
+            StringCchPrintfW(engineClass_,_countof(engineClass_),L"NativeIME.EngineReply.%p",static_cast<void*>(this));
+            WNDCLASSW wc{};wc.lpfnWndProc=EngineWndProc;wc.hInstance=g_instance;wc.lpszClassName=engineClass_;
+            if(!RegisterClassW(&wc))return;windowClassOwned_=true;
+            engineWindow_=CreateWindowExW(0,engineClass_,L"",0,0,0,0,0,HWND_MESSAGE,nullptr,g_instance,this);
+            if(engineWindow_)engine_=std::make_unique<nativeime::win::AsyncEngine>(engineWindow_);
+            else StopEngine();
+        }catch(...){StopEngine();}
+    }
+    void StopEngine() noexcept {
+        InvalidateQuery();engine_.reset();
+        if(engineWindow_){DestroyWindow(engineWindow_);engineWindow_=nullptr;}
+        if(windowClassOwned_){UnregisterClassW(engineClass_,g_instance);windowClassOwned_=false;}
+    }
+    void OnEngineReply() noexcept {
+        try{
+            if(!engine_)return;auto reply=engine_->Take();
+            if(!reply||reply->generation!=generation_||!composition_||!context_||!Eligible(context_))return;
+            if(!reply->response.ok){popup_.Hide();return;}
+            if(!session_.AcceptCandidates(reply->input,std::move(reply->response.candidates)))return;
+            if(anchorValid_&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_)popup_.Show(GetFocus(),anchor_,session_);
+        }catch(...){popup_.Hide();}
+    }
     ITfComposition* composition_ = nullptr;
     ITfContext* context_ = nullptr;
     bool secure_ = false;
@@ -237,7 +282,7 @@ private:
     // focused Win32 EDIT control, in this process, not password/read-only.
     // Unknown custom controls and secure contexts pass through.
     bool Eligible(ITfContext* context) const noexcept {
-        if (!context || !threadManager_ || secure_ || blocked_) return false;
+        if (!context || !threadManager_ || secure_ || blocked_ || !engine_) return false;
         const auto snapshot=nativeime::win::InspectFocus(GetFocus(),app_);
         if(!snapshot.writableEdit)return false;
         const auto policy=nativeime::core::ResolveApp(snapshot.app,snapshot.focus,
@@ -272,7 +317,7 @@ private:
     void DropComposition() noexcept {
         auto* old=composition_; composition_=nullptr;
         auto* ctx=context_; context_=nullptr;
-        session_.Reset();
+        InvalidateQuery();session_.Reset();
         blocked_=false; popup_.Hide();
         if(old) old->Release();
         if(ctx) ctx->Release();

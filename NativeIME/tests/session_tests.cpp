@@ -37,5 +37,12 @@ int main() {
     auto overflow=s.Handle({Key::Letter,L'y'});
     check(overflow.commit==std::wstring(InputSession::MaxPreedit,L'x') && s.Preedit()==L"y", "bounded buffer preserves raw");
     s.Reset(); check(s.Preedit().empty() && s.Candidates().empty(), "reset clears state");
+    InputSession async([](const std::wstring& p){return QueryResult{p,{}};});
+    type(async,L"nihao");
+    check(async.Candidates().empty(),"no seed fallback");
+    check(!async.AcceptCandidates(L"niha",{{L"错误",1,L""}}),"reject stale input");
+    check(async.AcceptCandidates(L"nihao",{{L"你好",1,L""}}),"accept remote candidates");
+    check(async.Handle({Key::Space}).commit==L"你好","remote commit");
+    type(async,L"abc");check(async.Handle({Key::Enter}).commit==L"abc","offline raw commit");
     return failures ? EXIT_FAILURE : EXIT_SUCCESS;
 }

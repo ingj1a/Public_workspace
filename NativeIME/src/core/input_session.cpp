@@ -10,6 +10,11 @@ void InputSession::SetChinese(bool enabled) {
     if (enabled != chinese_) Reset();
     chinese_ = enabled;
 }
+bool InputSession::AcceptCandidates(const std::wstring& input,std::vector<Candidate> candidates) {
+    if(input.empty()||input!=preedit_||!chinese_)return false;
+    if(candidates.size()>9)candidates.resize(9);
+    candidates_=std::move(candidates);selected_=0;return true;
+}
 void InputSession::Refresh() {
     candidates_ = (query_ ? query_(preedit_) : engine_.Query(preedit_)).candidates;
     if (candidates_.size() > 9) candidates_.resize(9);
