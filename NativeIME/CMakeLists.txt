@@ -26,6 +26,7 @@ add_test(NAME nativeime_core_tests COMMAND nativeime_core_tests)
 if(WIN32)
     add_library(nativeime_tsf SHARED
         src/windows/tsf_dll.cpp
+        src/windows/NativeIME.def
     )
     target_compile_definitions(nativeime_tsf PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
     target_link_libraries(nativeime_tsf PRIVATE ole32 advapi32 msctf)
