@@ -10,5 +10,8 @@ int main(){
     if(!ipc::DecodeResponse(response.data(),response.size(),out)||!out.ok||out.candidates.size()!=2||out.candidates[0].text!=L"你好")return 2;
     response.pop_back();if(ipc::DecodeResponse(response.data(),response.size(),out))return 3;
     auto invalid=request;invalid[0]=0;if(ipc::DecodeRequest(invalid.data(),invalid.size(),decoded))return 4;
+    ipc::Response huge;huge.ok=true;for(int i=0;i<9;++i)huge.candidates.push_back({std::wstring(160,L'你'),0,std::wstring(80,L'好')});
+    auto bounded=ipc::EncodeResponse(huge);if(bounded.size()>ipc::MaxFrame||!ipc::DecodeResponse(bounded.data(),bounded.size(),out))return 5;
+    auto bad=request;bad.back()=0;if(ipc::DecodeRequest(bad.data(),bad.size(),decoded))return 6;
     return 0;
 }

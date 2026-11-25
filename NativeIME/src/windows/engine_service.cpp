@@ -1,23 +1,24 @@
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
 #include <windows.h>
 #include "core/rime_provider.hpp"
 #include "core/engine_protocol.hpp"
-#include <string>
-#include <vector>
+#include "pipe_security.hpp"
+#include "pipe_io.hpp"
+#include <filesystem>
 #include <iostream>
 namespace {
-bool ReadExact(HANDLE h,void* p,DWORD n){auto b=static_cast<unsigned char*>(p);while(n){DWORD got=0;if(!ReadFile(h,b,n,&got,nullptr)||!got)return false;b+=got;n-=got;}return true;}
-bool WriteExact(HANDLE h,const void* p,DWORD n){auto b=static_cast<const unsigned char*>(p);while(n){DWORD sent=0;if(!WriteFile(h,b,n,&sent,nullptr)||!sent)return false;b+=sent;n-=sent;}return true;}
+using namespace nativeime;
 std::wstring Arg(int argc,wchar_t** argv,const wchar_t* key){for(int i=1;i+1<argc;++i)if(_wcsicmp(argv[i],key)==0)return argv[i+1];return {};}
-bool Serve(HANDLE pipe,nativeime::core::RimeProvider& rime){
-    for(;;){std::uint32_t n=0;if(!ReadExact(pipe,&n,sizeof(n)))return false;if(n<12||n>nativeime::core::ipc::MaxFrame)return false;
-        std::vector<std::uint8_t> frame(n);if(!ReadExact(pipe,frame.data(),n))return false;
-        nativeime::core::ipc::Request req;nativeime::core::ipc::Response resp;
-        if(nativeime::core::ipc::DecodeRequest(frame.data(),frame.size(),req)){resp.ok=true;resp.candidates=rime.Query(req.pinyin).candidates;}
-        auto out=nativeime::core::ipc::EncodeResponse(resp);const auto len=static_cast<std::uint32_t>(out.size());
-        if(!WriteExact(pipe,&len,sizeof(len))||!WriteExact(pipe,out.data(),len))return false;
+void Serve(HANDLE pipe,core::RimeProvider& rime){
+    const auto deadline=GetTickCount64()+500;
+    std::uint32_t n=0;if(!win::Transfer(pipe,&n,sizeof(n),false,deadline)||n<13||n>core::ipc::MaxFrame)return;
+    std::vector<std::uint8_t> frame(n);if(!win::Transfer(pipe,frame.data(),n,false,deadline))return;
+    core::ipc::Request req;core::ipc::Response resp;
+    if(core::ipc::DecodeRequest(frame.data(),frame.size(),req)){
+        try{resp.candidates=rime.Query(req.pinyin).candidates;resp.ok=true;}catch(...){resp={};}
+    }
+    auto out=core::ipc::EncodeResponse(resp);auto len=static_cast<std::uint32_t>(out.size());
+    if(win::Transfer(pipe,&len,sizeof(len),true,deadline)&&win::Transfer(pipe,out.data(),len,true,deadline)){
+        unsigned char ack=0;win::Transfer(pipe,&ack,1,false,deadline);
     }
 }
 }
@@ -26,14 +27,29 @@ int wmain(int argc,wchar_t** argv){
         auto shared=Arg(argc,argv,L"--shared"),user=Arg(argc,argv,L"--user"),schema=Arg(argc,argv,L"--schema"),dll=Arg(argc,argv,L"--rime-dll");
         if(shared.empty()||user.empty()||schema.empty()||dll.empty())return 2;
         std::filesystem::create_directories(user);
-        nativeime::core::RimeProvider rime(std::string(shared.begin(),shared.end()),std::string(user.begin(),user.end()),std::string(schema.begin(),schema.end()),dll);
-        constexpr wchar_t pipeName[]=L"\\\\.\\pipe\\NativeIME.Engine.v1";
+        auto sid=nativeime::win::LogonSid(),name=nativeime::win::PipeName(sid);
+        if(name.empty())return 3;
+        PSECURITY_DESCRIPTOR sd=nullptr;
+        const auto sddl=L"D:P(A;;GA;;;"+sid+L")";
+        if(!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(),SDDL_REVISION_1,&sd,nullptr))return 3;
+        SECURITY_ATTRIBUTES sa{sizeof(sa),sd,FALSE};
+        HANDLE pipe=CreateNamedPipeW(name.c_str(),PIPE_ACCESS_DUPLEX|FILE_FLAG_OVERLAPPED|FILE_FLAG_FIRST_PIPE_INSTANCE,
+            PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,8192,8192,0,&sa);
+        LocalFree(sd);
+        if(pipe==INVALID_HANDLE_VALUE)return 3;
+        nativeime::core::RimeProvider rime(std::filesystem::path(shared).u8string(),std::filesystem::path(user).u8string(),std::filesystem::path(schema).u8string(),dll);
         for(;;){
-            HANDLE pipe=CreateNamedPipeW(pipeName,PIPE_ACCESS_DUPLEX,PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,nativeime::core::ipc::MaxFrame+4,nativeime::core::ipc::MaxFrame+4,0,nullptr);
-            if(pipe==INVALID_HANDLE_VALUE)return 3;
-            BOOL connected=ConnectNamedPipe(pipe,nullptr)?TRUE:(GetLastError()==ERROR_PIPE_CONNECTED);
+            OVERLAPPED ov{};ov.hEvent=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+            if(!ov.hEvent){CloseHandle(pipe);return 3;}
+            BOOL connected=ConnectNamedPipe(pipe,&ov);
+            if(!connected){
+                const auto err=GetLastError();
+                if(err==ERROR_PIPE_CONNECTED)connected=TRUE;
+                else if(err==ERROR_IO_PENDING){DWORD bytes=0;connected=GetOverlappedResult(pipe,&ov,&bytes,TRUE);}
+            }
+            CloseHandle(ov.hEvent);
             if(connected)Serve(pipe,rime);
-            FlushFileBuffers(pipe);DisconnectNamedPipe(pipe);CloseHandle(pipe);
+            DisconnectNamedPipe(pipe);
         }
     }catch(...){return 4;}
 }
