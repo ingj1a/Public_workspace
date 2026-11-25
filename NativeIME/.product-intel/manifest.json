@@ -6,17 +6,20 @@
     {
       "id": "REQ-001",
       "priority": "P0",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "note": "TSF DLL probe scaffolded; Windows registration/activation not yet executed"
     },
     {
       "id": "REQ-002",
       "priority": "P0",
-      "status": "PARTIAL"
+      "status": "PARTIAL",
+      "note": "Portable deterministic seed lookup tested; TSF composition/commit not implemented"
     },
     {
       "id": "REQ-003",
       "priority": "P0",
-      "status": "PARTIAL"
+      "status": "PARTIAL",
+      "note": "Five-entry seed fixture only; production dictionary not integrated"
     },
     {
       "id": "REQ-004",
@@ -26,29 +29,32 @@
     {
       "id": "REQ-005",
       "priority": "P0",
-      "status": "NOT_RUN"
+      "status": "PARTIAL",
+      "note": "TSF probe passes all keys through by design; shortcut matrix not run on Windows"
     },
     {
       "id": "REQ-006",
       "priority": "P0",
-      "status": "NOT_RUN"
+      "status": "NOT_RUN",
+      "note": "Engine IPC and fail-open recovery not implemented"
     },
     {
       "id": "REQ-007",
       "priority": "P0",
-      "status": "PARTIAL"
+      "status": "PARTIAL",
+      "note": "Portable core has no network dependency; whole IME not implemented"
     }
   ],
   "tests": [
     {
       "id": "TEST-CORE-001",
       "status": "PASS",
-      "scope": "Portable deterministic seed-engine contract; Linux C++17 build and CTest run"
+      "scope": "C++17 build and CTest on Linux GitHub Actions and local Linux toolchain"
     },
     {
       "id": "TEST-TSF-001",
       "status": "NOT_RUN",
-      "scope": "Windows TSF registration and activation"
+      "scope": "Windows TSF registration and activation; Windows CI build pending"
     },
     {
       "id": "TEST-TSF-002",
@@ -63,12 +69,13 @@
     {
       "id": "TEST-TSF-004",
       "status": "NOT_RUN",
-      "scope": "Host shortcut pass-through"
+      "scope": "Host shortcut pass-through on Windows"
     },
     {
       "id": "TEST-TSF-005",
       "status": "NOT_RUN",
       "scope": "Engine disconnect fail-open"
     }
-  ]
+  ],
+  "evidenceLevel": "L2 for portable core only; L0/L1 for TSF scaffold until Windows build and runtime evidence exist"
 }
