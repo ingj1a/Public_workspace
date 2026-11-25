@@ -35,13 +35,19 @@ add_test(NAME nativeime_core_tests COMMAND nativeime_core_tests)
 
 add_test(NAME nativeime_session_tests COMMAND nativeime_session_tests)
 
+option(NATIVEIME_EXPERIMENTAL_TSF "Enable unvalidated inline TSF composition for lab only" OFF)
 if(WIN32)
     add_library(nativeime_tsf SHARED
         src/windows/tsf_dll.cpp
+        src/windows/tsf_edit.cpp
         src/windows/NativeIME.def
     )
     target_compile_definitions(nativeime_tsf PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
-    target_link_libraries(nativeime_tsf PRIVATE ole32 advapi32 uuid)
+    target_link_libraries(nativeime_tsf PRIVATE ole32 advapi32 uuid user32)
+    if(NATIVEIME_EXPERIMENTAL_TSF)
+        target_compile_definitions(nativeime_tsf PRIVATE NATIVEIME_EXPERIMENTAL_TSF)
+        target_link_libraries(nativeime_tsf PRIVATE nativeime_core)
+    endif()
     add_executable(nativeime_tsf_smoke tests/tsf_smoke.cpp)
     target_link_libraries(nativeime_tsf_smoke PRIVATE ole32 uuid)
     add_test(NAME nativeime_tsf_smoke COMMAND nativeime_tsf_smoke $<TARGET_FILE:nativeime_tsf>)

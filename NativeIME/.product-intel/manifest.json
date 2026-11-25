@@ -7,13 +7,13 @@
       "id": "REQ-001",
       "priority": "P0",
       "status": "NOT_RUN",
-      "note": "TSF DLL probe scaffolded; Windows registration/activation not yet executed"
+      "note": "Default TSF probe compiled and COM smoke passed in run 45583478649; runtime registration pending."
     },
     {
       "id": "REQ-002",
       "priority": "P0",
       "status": "PARTIAL",
-      "note": "Portable deterministic seed lookup tested; TSF composition/commit not implemented"
+      "note": "Portable session passed CI. Experimental inline TSF preedit/commit implemented, default OFF; desktop E2E pending."
     },
     {
       "id": "REQ-003",
@@ -49,12 +49,12 @@
     {
       "id": "TEST-CORE-001",
       "status": "PASS",
-      "scope": "C++17 build and CTest on Linux GitHub Actions and local Linux toolchain"
+      "scope": "Windows/Linux seed and session tests passed at 9b7330e; run 45583478649."
     },
     {
       "id": "TEST-TSF-001",
       "status": "NOT_RUN",
-      "scope": "Windows TSF registration and activation; Windows CI build pending"
+      "scope": "COM smoke passed, no registration or activation on desktop."
     },
     {
       "id": "TEST-TSF-002",
@@ -75,7 +75,18 @@
       "id": "TEST-TSF-005",
       "status": "NOT_RUN",
       "scope": "Engine disconnect fail-open"
+    },
+    {
+      "id": "TEST-TSF-COM",
+      "status": "PASS",
+      "scope": "DLL load, exported class factory, interface lifetime and null-context pass-through at 9b7330e",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45583478649"
+    },
+    {
+      "id": "TEST-TSF-EXP",
+      "status": "NOT_RUN",
+      "scope": "Experimental inline edit build and COM smoke; live text store E2E pending."
     }
   ],
-  "evidenceLevel": "L2 for portable core only; L0/L1 for TSF scaffold until Windows build and runtime evidence exist"
+  "evidenceLevel": "L2 for baseline COM and core; experimental integration unverified until CI and desktop E2E."
 }

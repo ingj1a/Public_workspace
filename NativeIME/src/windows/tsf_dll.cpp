@@ -5,6 +5,13 @@
 
 #include <atomic>
 #include <new>
+#include <utility>
+#include "tsf_edit.hpp"
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+#include "core/input_session.hpp"
+#include <textstor.h>
+#include <cwchar>
+#endif
 
 namespace {
 HINSTANCE g_instance = nullptr;
@@ -15,7 +22,7 @@ constexpr wchar_t kClsidText[] = L"{9D61A6D1-2C5E-4B6B-9C8A-7A8E1F2D1A10}";
 const CLSID CLSID_NativeIME = {0x9d61a6d1, 0x2c5e, 0x4b6b, {0x9c,0x8a,0x7a,0x8e,0x1f,0x2d,0x1a,0x10}};
 const GUID GUID_NativeIME_Profile = {0xd0b37c31, 0x9e0b, 0x4a68, {0x8c,0x5d,0x7a,0x3a,0x29,0xd6,0xe4,0x11}};
 
-class NativeTextService final : public ITfTextInputProcessorEx, public ITfKeyEventSink {
+class NativeTextService final : public ITfTextInputProcessorEx, public ITfKeyEventSink, public ITfCompositionSink {
 public:
     NativeTextService() { ++g_objects; }
     ~NativeTextService() { Deactivate(); --g_objects; }
@@ -27,6 +34,8 @@ public:
             *object = static_cast<ITfTextInputProcessorEx*>(this);
         else if (riid == IID_ITfKeyEventSink)
             *object = static_cast<ITfKeyEventSink*>(this);
+        else if (riid == IID_ITfCompositionSink)
+            *object = static_cast<ITfCompositionSink*>(this);
         else
             return E_NOINTERFACE;
         AddRef();
@@ -42,7 +51,12 @@ public:
     STDMETHODIMP Activate(ITfThreadMgr* manager, TfClientId clientId) override {
         return ActivateEx(manager, clientId, 0);
     }
-    STDMETHODIMP ActivateEx(ITfThreadMgr* manager, TfClientId clientId, DWORD) override {
+    STDMETHODIMP ActivateEx(ITfThreadMgr* manager, TfClientId clientId, DWORD flags) override {
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        secure_ = (flags & TF_TMAE_SECUREMODE) != 0;
+#else
+        (void)flags;
+#endif
         if (!manager) return E_INVALIDARG;
         if (threadManager_) return S_OK;
         threadManager_ = manager;
@@ -63,6 +77,9 @@ public:
         return hr;
     }
     STDMETHODIMP Deactivate() override {
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        FinishRaw();
+#endif
         if (!threadManager_) return S_OK;
         ITfKeystrokeMgr* keys = nullptr;
         if (SUCCEEDED(threadManager_->QueryInterface(IID_PPV_ARGS(&keys)))) {
@@ -75,15 +92,64 @@ public:
         return S_OK;
     }
 
-    STDMETHODIMP OnSetFocus(BOOL) override { return S_OK; }
-    STDMETHODIMP OnTestKeyDown(ITfContext*, WPARAM, LPARAM, BOOL* eaten) override {
-        if (!eaten) return E_POINTER;
-        *eaten = FALSE; // Phase 0 probe: never consume a host application's keys.
+    STDMETHODIMP OnSetFocus(BOOL foreground) override {
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        if (!foreground) FinishRaw();
+#else
+        (void)foreground;
+#endif
         return S_OK;
     }
-    STDMETHODIMP OnKeyDown(ITfContext*, WPARAM, LPARAM, BOOL* eaten) override {
+    STDMETHODIMP OnCompositionTerminated(TfEditCookie, ITfComposition* composition) override {
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        if (composition == composition_) DropComposition();
+#else
+        (void)composition;
+#endif
+        return S_OK;
+    }
+    STDMETHODIMP OnTestKeyDown(ITfContext* context, WPARAM key, LPARAM, BOOL* eaten) override {
         if (!eaten) return E_POINTER;
         *eaten = FALSE;
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        // Test callback is read-only: never advance composition twice.
+        if (Eligible(context) && (!composition_ || context == context_)) {
+            auto event = Translate(key);
+            *eaten = Wants(event);
+        }
+#else
+        (void)context; (void)key;
+#endif
+        return S_OK;
+    }
+    STDMETHODIMP OnKeyDown(ITfContext* context, WPARAM key, LPARAM, BOOL* eaten) override {
+        if (!eaten) return E_POINTER;
+        *eaten = FALSE;
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        try {
+            if (!Eligible(context) || (composition_ && context != context_)) {
+                FinishRaw();
+                return S_OK;
+            }
+            auto event = Translate(key);
+            if (!Wants(event)) {
+                FinishRaw();
+                return S_OK;
+            }
+            auto next = session_;
+            auto result = next.Handle(event);
+            if (!result.consumed) return S_OK;
+            const HRESULT hr = nativeime::win::RunEdit(context, clientId_, [&](TfEditCookie cookie) {
+                return Apply(context, cookie, next, result);
+            });
+            if (hr == S_OK) {
+                session_ = std::move(next);
+                *eaten = TRUE;
+            }
+        } catch (...) { /* Never allow a C++ exception to escape a COM callback. */ }
+#else
+        (void)context; (void)key;
+#endif
         return S_OK;
     }
     STDMETHODIMP OnTestKeyUp(ITfContext*, WPARAM, LPARAM, BOOL* eaten) override {
@@ -103,6 +169,121 @@ public:
     }
 
 private:
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+    using Key = nativeime::core::Key;
+    using KeyEvent = nativeime::core::KeyEvent;
+    using Session = nativeime::core::InputSession;
+    using Result = nativeime::core::InputResult;
+    Session session_;
+    ITfComposition* composition_ = nullptr;
+    ITfContext* context_ = nullptr;
+    bool secure_ = false;
+    // Deliberate allow-list for this engineering candidate: only a standard
+    // focused Win32 EDIT control, in this process, not password/read-only.
+    // Unknown custom controls and secure contexts pass through.
+    bool Eligible(ITfContext* context) const noexcept {
+        if (!context || !threadManager_ || secure_) return false;
+        HWND focus=GetFocus();
+        if (!focus) return false;
+        DWORD pid=0;
+        GetWindowThreadProcessId(focus,&pid);
+        if(pid!=GetCurrentProcessId()) return false;
+        wchar_t klass[32]{};
+        if(!GetClassNameW(focus,klass,32) || _wcsicmp(klass,L"Edit")!=0) return false;
+        if(GetWindowLongPtrW(focus,GWL_STYLE)&(ES_PASSWORD|ES_READONLY)) return false;
+        if(SendMessageW(focus,EM_GETPASSWORDCHAR,0,0)!=0) return false;
+        TF_STATUS status{};
+        return SUCCEEDED(context->GetStatus(&status)) && !(status.dwDynamicFlags & TF_SD_READONLY);
+    }
+    static KeyEvent Translate(WPARAM key) noexcept {
+        if ((GetKeyState(VK_CONTROL)&0x8000)||(GetKeyState(VK_MENU)&0x8000)||
+            (GetKeyState(VK_LWIN)&0x8000)||(GetKeyState(VK_RWIN)&0x8000)||
+            (GetKeyState(VK_SHIFT)&0x8000)||(GetKeyState(VK_CAPITAL)&1))
+            return {Key::Other,0,true};
+        if(key>='A' && key<='Z') return {Key::Letter,static_cast<wchar_t>(key-'A'+L'a')};
+        if(key==VK_SPACE) return {Key::Space};
+        if(key==VK_RETURN) return {Key::Enter};
+        if(key==VK_BACK) return {Key::Backspace};
+        if(key==VK_ESCAPE) return {Key::Escape};
+        return {};
+    }
+    bool Wants(KeyEvent event) const noexcept {
+        if(event.shortcut) return false;
+        if(event.key==Key::Letter) return session_.Preedit().size()<Session::MaxPreedit;
+        return !session_.Preedit().empty() && (event.key==Key::Space||event.key==Key::Enter||
+            event.key==Key::Backspace||event.key==Key::Escape);
+    }
+    void DropComposition() noexcept {
+        auto* old=composition_; composition_=nullptr;
+        auto* ctx=context_; context_=nullptr;
+        session_.Reset();
+        if(old) old->Release();
+        if(ctx) ctx->Release();
+    }
+    HRESULT End(TfEditCookie cookie) noexcept {
+        if(!composition_) return S_OK;
+        auto* comp=composition_;
+        comp->AddRef();
+        const HRESULT hr=comp->EndComposition(cookie);
+        if(SUCCEEDED(hr) && composition_==comp) DropComposition();
+        comp->Release();
+        return hr;
+    }
+    void FinishRaw() noexcept {
+        if(context_ && composition_) {
+            auto* ctx=context_;
+            ctx->AddRef();
+            nativeime::win::RunEdit(ctx,clientId_,[&](TfEditCookie cookie){return End(cookie);});
+            ctx->Release();
+        }
+    }
+    HRESULT Begin(ITfContext* context,TfEditCookie cookie) noexcept {
+        ITfInsertAtSelection* insert=nullptr;
+        ITfContextComposition* manager=nullptr;
+        ITfRange* range=nullptr;
+        HRESULT hr=context->QueryInterface(IID_PPV_ARGS(&insert));
+        if(SUCCEEDED(hr)) hr=insert->InsertTextAtSelection(cookie,TF_IAS_QUERYONLY,L"",0,&range);
+        BOOL empty=FALSE;
+        if(SUCCEEDED(hr)&&range) hr=range->IsEmpty(cookie,&empty);
+        if(SUCCEEDED(hr)&&!empty) hr=E_ACCESSDENIED; // never destroy existing selection on cancel
+        if(SUCCEEDED(hr)) hr=context->QueryInterface(IID_PPV_ARGS(&manager));
+        ITfComposition* created=nullptr;
+        if(SUCCEEDED(hr)) hr=manager->StartComposition(cookie,range,this,&created);
+        if(SUCCEEDED(hr)&&created) {
+            composition_=created; context_=context; context_->AddRef();
+        } else if(SUCCEEDED(hr)) hr=E_FAIL;
+        if(range) range->Release();
+        if(manager) manager->Release();
+        if(insert) insert->Release();
+        return hr;
+    }
+    HRESULT Apply(ITfContext* context,TfEditCookie cookie,const Session& next,const Result& result) noexcept {
+        const bool starting=!composition_;
+        if(starting) {
+            const HRESULT hr=Begin(context,cookie);
+            if(FAILED(hr)) return hr;
+        }
+        // Inline preedit is visible. No numeric selection until a candidate UI exists.
+        const auto& text=result.commit.empty()?next.Preedit():result.commit;
+        ITfRange* range=nullptr;
+        HRESULT hr=composition_->GetRange(&range);
+        if(SUCCEEDED(hr)) hr=range->SetText(cookie,0,text.c_str(),static_cast<LONG>(text.size()));
+        if(FAILED(hr)) {
+            if(range) range->Release();
+            if(starting) End(cookie);
+            return hr;
+        }
+        // After a successful text mutation never re-deliver the triggering key.
+        // Selection/end failure is left for focus cleanup, not a duplicate insertion.
+        if(SUCCEEDED(range->Collapse(cookie,TF_ANCHOR_END))) {
+            TF_SELECTION sel{}; sel.range=range; sel.style.ase=TF_AE_NONE;
+            context->SetSelection(cookie,1,&sel);
+        }
+        range->Release();
+        if(next.Preedit().empty() || !result.commit.empty()) End(cookie);
+        return S_OK;
+    }
+#endif
     LONG refs_ = 1;
     ITfThreadMgr* threadManager_ = nullptr;
     TfClientId clientId_ = TF_CLIENTID_NULL;

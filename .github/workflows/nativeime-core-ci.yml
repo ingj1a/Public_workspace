@@ -39,3 +39,12 @@ jobs:
           name: NativeIME-InputLab-windows-x64
           path: NativeIME/build/Release/NativeIME.InputLab.exe
           if-no-files-found: error
+      - name: Configure experimental TSF (no registration)
+        if: runner.os == 'Windows'
+        run: cmake -S NativeIME -B NativeIME/build-experimental -DNATIVEIME_EXPERIMENTAL_TSF=ON
+      - name: Build experimental TSF
+        if: runner.os == 'Windows'
+        run: cmake --build NativeIME/build-experimental --config Release --parallel
+      - name: Test experimental COM and session contracts
+        if: runner.os == 'Windows'
+        run: ctest --test-dir NativeIME/build-experimental -C Release --output-on-failure
