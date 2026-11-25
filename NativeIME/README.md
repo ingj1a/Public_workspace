@@ -2,7 +2,7 @@
 
 **NativeIME** is an open-source, native Windows Chinese Pinyin input method project focused on reliable typing, context-aware language switching, professional vocabulary, and a restrained desktop UI.
 
-> Status: Phase 0 — repository and core-engine foundation. This is not yet an installable IME. The TSF text service, composition lifecycle, candidate UI, and Windows installation flow are still pending.
+> Status: Phase 0 — native TSF probe and standalone input lab. Not an installable IME. System-wide composition and candidate popup remain pending.
 
 ## Product principles
 
@@ -15,7 +15,7 @@
 
 ## Current scope
 
-The first milestone establishes a portable Pinyin core contract and test harness. Windows TSF integration follows only after the core behavior is testable.
+The input lab exercises the same bounded C++ session intended for later TSF integration, without modifying Windows settings. On Windows, build and run `build/Release/NativeIME.InputLab.exe`. Set the system keyboard to English when testing the lab. Try nihao, ceshi and tupian, Space, digits 1–9, arrows, Backspace, Escape, and the language button. The seed lexicon is only a fixture. The TSF DLL still passes all keys through; the new smoke test checks COM exports and object lifetime without registration.
 
 See:
 - [Product requirements](PRODUCT.md)
@@ -42,8 +42,8 @@ The portable core tests can also run on Linux/macOS. The Windows TSF adapter wil
 |---|---|
 | Product/architecture contracts | In progress |
 | Portable Pinyin core contract | In progress |
-| TSF text service | Not started |
-| Composition and candidate UI | Not started |
+| TSF text service | Registration/activation probe builds; system runtime pending |
+| Composition and candidate UI | Portable session + native standalone lab; TSF integration pending |
 | Context-aware app rules | Not started |
 | Professional dictionaries | Not started |
 | Installer/updater | Not started |

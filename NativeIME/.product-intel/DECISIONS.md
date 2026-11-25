@@ -29,3 +29,9 @@
 - Status: Open
 - Reason: Weasel is GPL-3.0, librime is BSD-3-Clause, and dictionary datasets may carry separate terms.
 - Consequence: Do not copy or redistribute upstream source/data until the project license and notices are settled.
+
+## DEC-006 — Isolated native input lab before system-wide key interception
+
+- Status: Accepted
+- Reason: Validate bounded session state and candidate actions without modifying Windows registration or capturing keys outside the lab.
+- Consequence: The existing TSF probe remains pass-through; the lab is a native Win32 EXE, not an installer. COM smoke tests exercise exports and direct object lifetime, not interactive activation. Unknown Pinyin is preserved as raw text on commit; switching language cancels an uncommitted preview. The five-entry fixture is not a real dictionary. GUI review and full TSF edit sessions remain release blockers.

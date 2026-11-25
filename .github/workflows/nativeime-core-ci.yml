@@ -11,6 +11,13 @@ on:
       - ".github/workflows/nativeime-core-ci.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: nativeime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test:
     strategy:
@@ -25,3 +32,10 @@ jobs:
         run: cmake --build NativeIME/build --config Release --parallel
       - name: Test
         run: ctest --test-dir NativeIME/build -C Release --output-on-failure
+      - name: Upload native input lab (not an installer)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeIME-InputLab-windows-x64
+          path: NativeIME/build/Release/NativeIME.InputLab.exe
+          if-no-files-found: error

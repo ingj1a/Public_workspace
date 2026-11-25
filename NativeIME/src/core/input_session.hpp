@@ -1,0 +1,35 @@
+#pragma once
+#include "core/pinyin_engine.hpp"
+#include <cstddef>
+
+namespace nativeime::core {
+enum class Key { Letter, Space, Enter, Backspace, Escape, Previous, Next, Digit, Other };
+struct KeyEvent {
+    Key key = Key::Other;
+    wchar_t character = 0;
+    bool shortcut = false;
+};
+struct InputResult {
+    bool consumed = false;
+    std::wstring commit;
+};
+class InputSession {
+public:
+    InputResult Handle(KeyEvent event);
+    void SetChinese(bool enabled);
+    void Reset() noexcept;
+    bool Chinese() const noexcept { return chinese_; }
+    const std::wstring& Preedit() const noexcept { return preedit_; }
+    const std::vector<Candidate>& Candidates() const noexcept { return candidates_; }
+    std::size_t Selected() const noexcept { return selected_; }
+    static constexpr std::size_t MaxPreedit = 64;
+private:
+    void Refresh();
+    InputResult Commit(std::size_t index, bool appendSpace);
+    PinyinEngine engine_;
+    bool chinese_ = true;
+    std::wstring preedit_;
+    std::vector<Candidate> candidates_;
+    std::size_t selected_ = 0;
+};
+}
