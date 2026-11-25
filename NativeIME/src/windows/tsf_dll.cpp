@@ -9,6 +9,8 @@
 #include "tsf_edit.hpp"
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
 #include "core/input_session.hpp"
+#include "focus_context.hpp"
+#include "tsf_popup.hpp"
 #include <textstor.h>
 #include <cwchar>
 #endif
@@ -22,7 +24,7 @@ constexpr wchar_t kClsidText[] = L"{9D61A6D1-2C5E-4B6B-9C8A-7A8E1F2D1A10}";
 const CLSID CLSID_NativeIME = {0x9d61a6d1, 0x2c5e, 0x4b6b, {0x9c,0x8a,0x7a,0x8e,0x1f,0x2d,0x1a,0x10}};
 const GUID GUID_NativeIME_Profile = {0xd0b37c31, 0x9e0b, 0x4a68, {0x8c,0x5d,0x7a,0x3a,0x29,0xd6,0xe4,0x11}};
 
-class NativeTextService final : public ITfTextInputProcessorEx, public ITfKeyEventSink, public ITfCompositionSink {
+class NativeTextService final : public ITfTextInputProcessorEx, public ITfKeyEventSink, public ITfCompositionSink, public ITfThreadMgrEventSink {
 public:
     NativeTextService() { ++g_objects; }
     ~NativeTextService() { Deactivate(); --g_objects; }
@@ -36,6 +38,8 @@ public:
             *object = static_cast<ITfKeyEventSink*>(this);
         else if (riid == IID_ITfCompositionSink)
             *object = static_cast<ITfCompositionSink*>(this);
+        else if (riid == IID_ITfThreadMgrEventSink)
+            *object = static_cast<ITfThreadMgrEventSink*>(this);
         else
             return E_NOINTERFACE;
         AddRef();
@@ -69,6 +73,16 @@ public:
             hr = keys->AdviseKeyEventSink(clientId_, static_cast<ITfKeyEventSink*>(this), TRUE);
             keys->Release();
         }
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        if(SUCCEEDED(hr)){
+            app_=nativeime::win::CurrentApplication();
+            ITfSource* source=nullptr;
+            if(SUCCEEDED(threadManager_->QueryInterface(IID_PPV_ARGS(&source)))){
+                source->AdviseSink(IID_ITfThreadMgrEventSink,static_cast<ITfThreadMgrEventSink*>(this),&focusCookie_);
+                source->Release();
+            }
+        }
+#endif
         if (FAILED(hr)) {
             threadManager_->Release();
             threadManager_ = nullptr;
@@ -78,7 +92,16 @@ public:
     }
     STDMETHODIMP Deactivate() override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
+        popup_.Destroy();
         FinishRaw();
+        if(threadManager_&&focusCookie_!=TF_INVALID_COOKIE){
+            ITfSource* source=nullptr;
+            if(SUCCEEDED(threadManager_->QueryInterface(IID_PPV_ARGS(&source)))){
+                source->UnadviseSink(focusCookie_);
+                source->Release();
+            }
+            focusCookie_=TF_INVALID_COOKIE;
+        }
 #endif
         if (!threadManager_) return S_OK;
         ITfKeystrokeMgr* keys = nullptr;
@@ -94,9 +117,31 @@ public:
 
     STDMETHODIMP OnSetFocus(BOOL foreground) override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
-        if (!foreground) FinishRaw();
+        if (!foreground) { popup_.Hide(); FinishRaw(); }
 #else
         (void)foreground;
+#endif
+        return S_OK;
+    }
+    STDMETHODIMP OnInitDocumentMgr(ITfDocumentMgr*) override {return S_OK;}
+    STDMETHODIMP OnUninitDocumentMgr(ITfDocumentMgr*) override {return S_OK;}
+    STDMETHODIMP OnSetFocus(ITfDocumentMgr*,ITfDocumentMgr*) override {
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        // Do not request a write lock during a document-focus notification.
+        // Hide immediately; the next key/context termination handles cleanup.
+        popup_.Hide();
+#endif
+        return S_OK;
+    }
+    STDMETHODIMP OnPushContext(ITfContext*) override {
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        popup_.Hide();
+#endif
+        return S_OK;
+    }
+    STDMETHODIMP OnPopContext(ITfContext*) override {
+#ifdef NATIVEIME_EXPERIMENTAL_TSF
+        popup_.Hide();
 #endif
         return S_OK;
     }
@@ -138,6 +183,7 @@ public:
             }
             auto next = session_;
             auto result = next.Handle(event);
+            anchorValid_=false;
             if (!result.consumed) return S_OK;
             const HRESULT hr = nativeime::win::RunEdit(context, clientId_, [&](TfEditCookie cookie) {
                 return Apply(context, cookie, next, result);
@@ -145,8 +191,11 @@ public:
             if (hr == S_OK) {
                 session_ = std::move(next);
                 *eaten = TRUE;
-            }
-        } catch (...) { /* Never allow a C++ exception to escape a COM callback. */ }
+                if(anchorValid_&&composition_&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_)
+                    popup_.Show(GetFocus(),anchor_,session_);
+                else popup_.Hide();
+            } else { popup_.Hide(); }
+        } catch (...) { popup_.Hide(); /* Never allow a C++ exception to escape a COM callback. */ }
 #else
         (void)context; (void)key;
 #endif
@@ -178,20 +227,22 @@ private:
     ITfComposition* composition_ = nullptr;
     ITfContext* context_ = nullptr;
     bool secure_ = false;
+    bool blocked_ = false;
+    DWORD focusCookie_=TF_INVALID_COOKIE;
+    nativeime::core::App app_=nativeime::core::App::Unknown;
+    nativeime::win::TsfPopup popup_;
+    RECT anchor_{};
+    bool anchorValid_=false;
     // Deliberate allow-list for this engineering candidate: only a standard
     // focused Win32 EDIT control, in this process, not password/read-only.
     // Unknown custom controls and secure contexts pass through.
     bool Eligible(ITfContext* context) const noexcept {
-        if (!context || !threadManager_ || secure_) return false;
-        HWND focus=GetFocus();
-        if (!focus) return false;
-        DWORD pid=0;
-        GetWindowThreadProcessId(focus,&pid);
-        if(pid!=GetCurrentProcessId()) return false;
-        wchar_t klass[32]{};
-        if(!GetClassNameW(focus,klass,32) || _wcsicmp(klass,L"Edit")!=0) return false;
-        if(GetWindowLongPtrW(focus,GWL_STYLE)&(ES_PASSWORD|ES_READONLY)) return false;
-        if(SendMessageW(focus,EM_GETPASSWORDCHAR,0,0)!=0) return false;
+        if (!context || !threadManager_ || secure_ || blocked_) return false;
+        const auto snapshot=nativeime::win::InspectFocus(GetFocus(),app_);
+        if(!snapshot.writableEdit)return false;
+        const auto policy=nativeime::core::ResolveApp(snapshot.app,snapshot.focus,
+            nativeime::core::Override::Auto,nativeime::core::Mode::Chinese);
+        if(policy.mode!=nativeime::core::Mode::Chinese)return false;
         TF_STATUS status{};
         return SUCCEEDED(context->GetStatus(&status)) && !(status.dwDynamicFlags & TF_SD_READONLY);
     }
@@ -205,11 +256,16 @@ private:
         if(key==VK_RETURN) return {Key::Enter};
         if(key==VK_BACK) return {Key::Backspace};
         if(key==VK_ESCAPE) return {Key::Escape};
+        if(key>='1'&&key<='9')return {Key::Digit,static_cast<wchar_t>(key)};
+        if(key==VK_UP)return {Key::Previous};
+        if(key==VK_DOWN)return {Key::Next};
         return {};
     }
     bool Wants(KeyEvent event) const noexcept {
         if(event.shortcut) return false;
         if(event.key==Key::Letter) return session_.Preedit().size()<Session::MaxPreedit;
+        if(event.key==Key::Digit)return popup_.Visible()&&event.character>=L'1'&&event.character<=L'9'&&static_cast<std::size_t>(event.character-L'1')<session_.Candidates().size();
+        if(event.key==Key::Previous||event.key==Key::Next)return popup_.Visible()&&!session_.Candidates().empty();
         return !session_.Preedit().empty() && (event.key==Key::Space||event.key==Key::Enter||
             event.key==Key::Backspace||event.key==Key::Escape);
     }
@@ -217,6 +273,7 @@ private:
         auto* old=composition_; composition_=nullptr;
         auto* ctx=context_; context_=nullptr;
         session_.Reset();
+        blocked_=false; popup_.Hide();
         if(old) old->Release();
         if(ctx) ctx->Release();
     }
@@ -226,10 +283,12 @@ private:
         comp->AddRef();
         const HRESULT hr=comp->EndComposition(cookie);
         if(SUCCEEDED(hr) && composition_==comp) DropComposition();
+        else if(FAILED(hr)&&composition_==comp) { blocked_=true; popup_.Hide(); }
         comp->Release();
         return hr;
     }
     void FinishRaw() noexcept {
+        popup_.Hide();
         if(context_ && composition_) {
             auto* ctx=context_;
             ctx->AddRef();
@@ -263,7 +322,7 @@ private:
             const HRESULT hr=Begin(context,cookie);
             if(FAILED(hr)) return hr;
         }
-        // Inline preedit is visible. No numeric selection until a candidate UI exists.
+        // Inline preedit and candidate list share the same bounded session.
         const auto& text=result.commit.empty()?next.Preedit():result.commit;
         ITfRange* range=nullptr;
         HRESULT hr=composition_->GetRange(&range);
@@ -277,7 +336,8 @@ private:
         // Selection/end failure is left for focus cleanup, not a duplicate insertion.
         if(SUCCEEDED(range->Collapse(cookie,TF_ANCHOR_END))) {
             TF_SELECTION sel{}; sel.range=range; sel.style.ase=TF_AE_NONE;
-            context->SetSelection(cookie,1,&sel);
+            if(SUCCEEDED(context->SetSelection(cookie,1,&sel))&&!next.Preedit().empty()&&result.commit.empty())
+                anchorValid_=nativeime::win::ReadCaretRect(context,cookie,range,anchor_);
         }
         range->Release();
         if(next.Preedit().empty() || !result.commit.empty()) End(cookie);

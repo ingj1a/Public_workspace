@@ -90,8 +90,9 @@
     },
     {
       "id": "TEST-RIME",
-      "status": "PARTIAL",
-      "scope": "Linux real Rime PASS. Windows 1.13.1 compiled, loader error 126 in run 45615307029; dependency staging fix pending rerun."
+      "status": "PASS",
+      "scope": "Real Windows official 1.13.1 DLL and Linux candidate smoke passed; not TSF production integration.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45618292448"
     },
     {
       "id": "TEST-APP-POLICY",
@@ -101,8 +102,13 @@
     {
       "id": "TEST-POPUP",
       "status": "NOT_RUN",
-      "scope": "InputLab popup build blocked by MSVC C2360; case scope fix added, pending rerun."
+      "scope": "Standalone InputLab builds; new experimental TSF native keyboard popup pending CI and live GUI checks."
+    },
+    {
+      "id": "TEST-FOCUS-WIN",
+      "status": "NOT_RUN",
+      "scope": "Native Win32 edit/password/read-only/disabled/unknown control tests, not third-party app focus coverage."
     }
   ],
-  "evidenceLevel": "L2 Windows core, COM smoke, Linux real Rime; Windows runtime and live E2E not passed."
+  "evidenceLevel": "L2 at 7ef8fcf for Windows/Linux real Rime; new candidate popup and focus integration pending CI; live GUI/E2E NOT_RUN."
 }
