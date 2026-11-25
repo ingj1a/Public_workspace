@@ -1,5 +1,9 @@
 #include "core/rime_provider.hpp"
+#include <cstring>
 #include <rime_api.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <algorithm>
 #include <atomic>
 #include <codecvt>
@@ -19,18 +23,35 @@ struct RimeProvider::Impl {
     RimeSessionId session=0;
     bool initialized=false,claimed=false;
     std::string shared,user,schema;
+#ifdef _WIN32
+    HMODULE module=nullptr;
+#endif
     ~Impl(){
-        if(session) api->destroy_session(session);
-        if(initialized) api->finalize();
+        if(session && api) api->destroy_session(session);
+        if(initialized && api) api->finalize();
+#ifdef _WIN32
+        if(module) FreeLibrary(module);
+#endif
         if(claimed) active.store(false);
     }
 };
-RimeProvider::RimeProvider(std::string shared,std::string user,std::string schema):impl_(new Impl) {
+RimeProvider::RimeProvider(std::string shared,std::string user,std::string schema,std::wstring modulePath):impl_(new Impl) {
     auto& p=*impl_;
     if(active.exchange(true)) throw std::runtime_error("Rime already active");
     p.claimed=true;
     p.shared=std::move(shared); p.user=std::move(user); p.schema=std::move(schema);
+#ifdef _WIN32
+    if(modulePath.empty()) throw std::runtime_error("An absolute rime.dll path is required on Windows");
+    p.module=LoadLibraryExW(modulePath.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+    if(!p.module) throw std::runtime_error("LoadLibraryExW(rime.dll) failed: "+std::to_string(GetLastError()));
+    using GetRimeApi = RimeApi* (__cdecl*)();
+    auto getApi=reinterpret_cast<GetRimeApi>(GetProcAddress(p.module,"rime_get_api"));
+    if(!getApi) throw std::runtime_error("rime_get_api export not found");
+    p.api=getApi();
+#else
+    (void)modulePath;
     p.api=rime_get_api();
+#endif
     if(!p.api) throw std::runtime_error("Rime API unavailable");
     RIME_STRUCT(RimeTraits,traits);
     traits.shared_data_dir=p.shared.c_str(); traits.user_data_dir=p.user.c_str();

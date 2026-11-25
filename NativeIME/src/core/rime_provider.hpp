@@ -7,7 +7,8 @@ namespace nativeime::core {
 // No system Rime configuration is modified; supply an isolated user directory.
 class RimeProvider {
 public:
-    RimeProvider(std::string sharedDir,std::string userDir,std::string schema);
+    RimeProvider(std::string sharedDir,std::string userDir,std::string schema,
+                 std::wstring modulePath = {});
     ~RimeProvider();
     RimeProvider(const RimeProvider&)=delete;
     RimeProvider& operator=(const RimeProvider&)=delete;

@@ -2,11 +2,18 @@
 #include "core/input_session.hpp"
 #include <filesystem>
 #include <iostream>
+#include <filesystem>
 int main(int argc,char** argv){
+#ifdef _WIN32
+    if(argc!=4) return 1;
+    const auto module=std::filesystem::u8path(argv[3]).wstring();
+#else
     if(argc!=3) return 1;
+    const std::wstring module;
+#endif
     try{
         std::filesystem::create_directories(argv[2]);
-        nativeime::core::RimeProvider rime(argv[1],argv[2],"luna_pinyin");
+        nativeime::core::RimeProvider rime(argv[1],argv[2],"luna_pinyin",module);
         auto q=rime.Query(L"nihao");
         bool found=false;
         for(auto& c:q.candidates) if(c.text==L"你好") found=true;
