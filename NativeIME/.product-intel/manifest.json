@@ -108,7 +108,12 @@
       "id": "TEST-FOCUS-WIN",
       "status": "NOT_RUN",
       "scope": "Native Win32 edit/password/read-only/disabled/unknown control tests, not third-party app focus coverage."
+    },
+    {
+      "id": "TEST-IPC-001",
+      "status": "NOT_RUN",
+      "scope": "Versioned bounded IPC frame round-trip, malformed frame rejection; CI pending."
     }
   ],
-  "evidenceLevel": "L2 at 7ef8fcf for Windows/Linux real Rime; new candidate popup and focus integration pending CI; live GUI/E2E NOT_RUN."
+  "evidenceLevel": "L2 for previous commit cdbe524; isolated Rime IPC service/client and protocol changes are new and pending CI; no live TSF/third-party application E2E."
 }

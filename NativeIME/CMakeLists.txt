@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(nativeime_core
     src/core/pinyin_engine.cpp
     src/core/app_policy.cpp
+    src/core/engine_protocol.cpp
 )
 target_include_directories(nativeime_core PUBLIC src)
 target_compile_features(nativeime_core PUBLIC cxx_std_17)
@@ -17,6 +18,11 @@ if(MSVC)
 else()
     target_compile_options(nativeime_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+add_executable(nativeime_engine_protocol_tests tests/engine_protocol_tests.cpp)
+target_link_libraries(nativeime_engine_protocol_tests PRIVATE nativeime_core)
+enable_testing()
+add_test(NAME nativeime_engine_protocol_tests COMMAND nativeime_engine_protocol_tests)
 
 add_executable(nativeime_core_tests tests/core_tests.cpp)
 target_link_libraries(nativeime_core_tests PRIVATE nativeime_core)
@@ -31,7 +37,6 @@ if(MSVC)
     target_compile_options(nativeime_session_tests PRIVATE /utf-8)
 endif()
 
-enable_testing()
 add_test(NAME nativeime_core_tests COMMAND nativeime_core_tests)
 
 add_test(NAME nativeime_session_tests COMMAND nativeime_session_tests)
@@ -85,6 +90,14 @@ if(WIN32)
         target_sources(nativeime_tsf PRIVATE src/windows/tsf_popup.cpp src/windows/focus_context.cpp)
         target_link_libraries(nativeime_tsf PRIVATE nativeime_core gdi32)
     endif()
+    if(NATIVEIME_WITH_RIME)
+        add_executable(NativeIME.EngineService src/windows/engine_service.cpp)
+        target_link_libraries(NativeIME.EngineService PRIVATE nativeime_rime)
+        target_compile_definitions(NativeIME.EngineService PRIVATE UNICODE _UNICODE)
+    endif()
+    add_library(nativeime_engine_client STATIC src/windows/engine_client.cpp)
+    target_include_directories(nativeime_engine_client PUBLIC src)
+    target_link_libraries(nativeime_engine_client PUBLIC nativeime_core)
     add_executable(nativeime_focus_tests tests/focus_context_tests.cpp src/windows/focus_context.cpp)
     target_link_libraries(nativeime_focus_tests PRIVATE nativeime_core user32)
     add_test(NAME nativeime_focus_tests COMMAND nativeime_focus_tests)

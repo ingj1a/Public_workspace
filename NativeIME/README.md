@@ -44,9 +44,9 @@ The portable core tests can also run on Linux/macOS. The Windows TSF adapter wil
 | Portable Pinyin core contract | In progress |
 | TSF text service | Registration/activation probe builds; system runtime pending |
 | Composition and candidate UI | Portable session + native standalone lab; TSF integration pending |
-| Context-aware app rules | Not started |
+| Context-aware app rules | Rule core exists; custom-control coverage not started |
 | Professional dictionaries | Not started |
-| Installer/updater | Not started |
+| Engine IPC | Versioned named-pipe protocol + Windows service/client candidate; TSF async wiring pending |\n| Installer/updater | Not started |
 | Windows compatibility/performance tests | Not run |
 
 ## License
