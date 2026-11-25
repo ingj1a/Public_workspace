@@ -84,8 +84,24 @@
     },
     {
       "id": "TEST-TSF-EXP",
+      "status": "PASS",
+      "scope": "Experimental build and COM smoke only; live E2E NOT_RUN",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45584432367"
+    },
+    {
+      "id": "TEST-RIME",
       "status": "NOT_RUN",
-      "scope": "Experimental inline edit build and COM smoke; live text store E2E pending."
+      "scope": "Real library query in isolated Linux CI"
+    },
+    {
+      "id": "TEST-APP-POLICY",
+      "status": "NOT_RUN",
+      "scope": "Synthetic app identity and focus rules; no real third-party application test"
+    },
+    {
+      "id": "TEST-POPUP",
+      "status": "NOT_RUN",
+      "scope": "Native lab popup visual and interaction checks"
     }
   ],
   "evidenceLevel": "L2 for baseline COM and core; experimental integration unverified until CI and desktop E2E."

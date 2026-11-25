@@ -1,6 +1,8 @@
 // Native Win32 development harness, not a system input method.
 #include <windows.h>
 #include <string>
+#include <algorithm>
+#include <windowsx.h>
 #include "core/input_session.hpp"
 using namespace nativeime::core;
 namespace {
@@ -8,6 +10,49 @@ InputSession session;
 HWND editor, preedit, candidates, modeButton, clearButton;
 WNDPROC originalEdit;
 HFONT font;
+HWND popup;
+void Insert(const std::wstring& text);
+void Render();
+LRESULT CALLBACK PopupProc(HWND hwnd,UINT msg,WPARAM w,LPARAM l) {
+    if(msg==WM_MOUSEACTIVATE) return MA_NOACTIVATE;
+    if(msg==WM_LBUTTONUP) {
+        const int index=(GET_Y_LPARAM(l)-34)/32;
+        if(GET_Y_LPARAM(l)>=34 && index>=0 && index<9 && static_cast<std::size_t>(index)<session.Candidates().size()) {
+            auto r=session.Handle({Key::Digit,static_cast<wchar_t>(L'1'+index)});
+            Insert(r.commit); Render();
+        }
+        return 0;
+    }
+    if(msg==WM_PAINT) {
+        PAINTSTRUCT ps{}; HDC dc=BeginPaint(hwnd,&ps); RECT r{};GetClientRect(hwnd,&r);
+        FillRect(dc,&r,GetSysColorBrush(COLOR_WINDOW)); SetBkMode(dc,TRANSPARENT);
+        SelectObject(dc,font);SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
+        RECT header{12,6,r.right-12,32}; DrawTextW(dc,session.Preedit().c_str(),-1,&header,DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
+        for(std::size_t i=0;i<session.Candidates().size();++i){
+            RECT row{4,34+static_cast<LONG>(i)*32,r.right-4,66+static_cast<LONG>(i)*32};
+            if(i==session.Selected()) FillRect(dc,&row,GetSysColorBrush(COLOR_HIGHLIGHT));
+            SetTextColor(dc,GetSysColor(i==session.Selected()?COLOR_HIGHLIGHTTEXT:COLOR_WINDOWTEXT));
+            auto label=std::to_wstring(i+1)+L"   "+session.Candidates()[i].text;
+            row.left+=10;DrawTextW(dc,label.c_str(),-1,&row,DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS|DT_NOPREFIX);
+        }
+        EndPaint(hwnd,&ps);return 0;
+    }
+    return DefWindowProcW(hwnd,msg,w,l);
+}
+void UpdatePopup(){
+    if(!popup)return;
+    if(session.Preedit().empty()||GetFocus()!=editor){ShowWindow(popup,SW_HIDE);return;}
+    POINT pt{};if(!GetCaretPos(&pt)){ShowWindow(popup,SW_HIDE);return;}
+    ClientToScreen(editor,&pt);
+    MONITORINFO mi{sizeof(mi)};if(!GetMonitorInfoW(MonitorFromPoint(pt,MONITOR_DEFAULTTONEAREST),&mi))return;
+    const int width=std::min<int>(300,mi.rcWork.right-mi.rcWork.left);
+    const int height=38+32*static_cast<int>(session.Candidates().size());
+    const int x=std::clamp<int>(pt.x,mi.rcWork.left,std::max<int>(mi.rcWork.left,mi.rcWork.right-width));
+    int y=pt.y+24;if(y+height>mi.rcWork.bottom)y=pt.y-height-4;
+    y=std::max<int>(mi.rcWork.top,y);
+    SetWindowPos(popup,HWND_TOP,x,y,width,height,SWP_NOACTIVATE|SWP_SHOWWINDOW);
+    InvalidateRect(popup,nullptr,TRUE);
+}
 void Render() {
     SetWindowTextW(preedit, session.Preedit().empty()?L"Ready":session.Preedit().c_str());
     std::wstring line;
@@ -19,6 +64,7 @@ void Render() {
     }
     SetWindowTextW(candidates,line.empty()?L"No candidates":line.c_str());
     SetWindowTextW(modeButton,session.Chinese()?L"Chinese / 中文":L"English / 英文");
+    UpdatePopup();
 }
 void Insert(const std::wstring& text) {
     if(!text.empty()) SendMessageW(editor,EM_REPLACESEL,TRUE,reinterpret_cast<LPARAM>(text.c_str()));
@@ -72,6 +118,9 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM w,LPARAM l) {
         candidates=Child(hwnd,L"STATIC",L"No candidates",SS_LEFT,5);
         if(!editor||!preedit||!candidates||!modeButton||!clearButton||!heading||!helper) return -1;
         originalEdit=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(editor,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(EditProc)));
+        WNDCLASSW pc{};pc.lpfnWndProc=PopupProc;pc.hInstance=GetModuleHandleW(nullptr);pc.lpszClassName=L"NativeIME.Candidates";pc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+        RegisterClassW(&pc);
+        popup=CreateWindowExW(WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW,pc.lpszClassName,L"候选词",WS_POPUP|WS_BORDER,0,0,0,0,hwnd,nullptr,pc.hInstance,nullptr);
         SetFocus(editor); return 0;
     case WM_SIZE: {
         const int width=LOWORD(l),height=HIWORD(l);
@@ -92,7 +141,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM w,LPARAM l) {
         if(LOWORD(w)==1) { session.SetChinese(!session.Chinese()); Render(); SetFocus(editor); return 0; }
         if(LOWORD(w)==2) { session.Reset(); SetWindowTextW(editor,L""); Render(); SetFocus(editor); return 0; }
         break;
-    case WM_DESTROY: PostQuitMessage(0); return 0;
+    case WM_DESTROY: if(popup)DestroyWindow(popup);popup=nullptr;PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(hwnd,msg,w,l);
 }
