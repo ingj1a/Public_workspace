@@ -26,12 +26,57 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare official librime runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "nativeime-rime"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $main = Join-Path $root "rime-msvc-x64.7z"
+          $deps = Join-Path $root "rime-deps-msvc-x64.7z"
+          Invoke-WebRequest "https://github.com/rime/librime/releases/download/1.13.1/rime-1c23358-Windows-msvc-x64.7z" -OutFile $main
+          Invoke-WebRequest "https://github.com/rime/librime/releases/download/1.13.1/rime-deps-1c23358-Windows-msvc-x64.7z" -OutFile $deps
+          $seven = (Get-Command 7z -ErrorAction Stop).Source
+          & $seven x $main "-o$root\main" -y | Out-Null
+          & $seven x $deps "-o$root\deps" -y | Out-Null
+          $dll = Get-ChildItem $root -Recurse -Filter rime.dll | Select-Object -First 1
+          if (-not $dll) { throw "Official librime 1.13.1 rime.dll not found in release assets" }
+          $dllDirs = Get-ChildItem $root -Recurse -Filter *.dll | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique
+          $env:PATH = ($dllDirs -join ";") + ";" + $env:PATH
+          "NATIVEIME_RIME_DLL=$($dll.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "NATIVEIME_RIME_RUNTIME_DIR=$($dll.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "NATIVEIME_RIME_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Checkout pinned Rime prelude data (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/checkout@v4
+        with:
+          repository: rime/rime-prelude
+          ref: 082425ea0684bca36474415d4a0e8db9b016487e
+          path: NativeIME/build-rime-shared
+      - name: Assemble pinned Luna Pinyin data (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $shared = "NativeIME/build-rime-shared"
+          git clone --depth 1 https://github.com/rime/rime-luna-pinyin.git "$env:RUNNER_TEMP\luna"
+          git -C "$env:RUNNER_TEMP\luna" checkout 84685a7e7793e43278ca29368977b79d74d37a03
+          Copy-Item "$env:RUNNER_TEMP\luna\*.yaml" $shared -Force
+          Copy-Item "$env:RUNNER_TEMP\luna\*.dict.yaml" $shared -Force
+          git clone --depth 1 https://github.com/rime/rime-stroke.git "$env:RUNNER_TEMP\stroke"
+          git -C "$env:RUNNER_TEMP\stroke" checkout 1e8fff9b9494ddec23b0cbc526bcfd8171a6fd48
+          Copy-Item "$env:RUNNER_TEMP\stroke\*.yaml" $shared -Force
+          Copy-Item "$env:RUNNER_TEMP\stroke\*.dict.yaml" $shared -Force
+          $opencc = Get-ChildItem "$env:NATIVEIME_RIME_ROOT" -Recurse -Directory | Where-Object { $_.Name -eq "opencc" } | Select-Object -First 1
+          if ($opencc) { Copy-Item $opencc.FullName "$shared\opencc" -Recurse -Force }
       - name: Configure
-        run: cmake -S NativeIME -B NativeIME/build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S NativeIME -B NativeIME/build -DCMAKE_BUILD_TYPE=Release -DNATIVEIME_WITH_RIME=$([bool]$env:NATIVEIME_RIME_DLL) -DNATIVEIME_RIME_DATA_DIR=NativeIME/build-rime-shared -DNATIVEIME_RIME_RUNTIME_DLL=$env:NATIVEIME_RIME_DLL
       - name: Build
         run: cmake --build NativeIME/build --config Release --parallel
       - name: Test
-        run: ctest --test-dir NativeIME/build -C Release --output-on-failure
+        shell: pwsh
+        run: |
+          if ($env:NATIVEIME_RIME_RUNTIME_DIR) { $env:PATH = "$env:NATIVEIME_RIME_RUNTIME_DIR;$env:PATH" }
+          ctest --test-dir NativeIME/build -C Release --output-on-failure
       - name: Upload native input lab (not an installer)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4

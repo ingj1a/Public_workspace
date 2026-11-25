@@ -91,18 +91,18 @@
     {
       "id": "TEST-RIME",
       "status": "NOT_RUN",
-      "scope": "Real library query in isolated Linux CI"
+      "scope": "Linux real librime 1.10.0 smoke passed in run 45588826219; Windows official 1.13.1 DLL test added, pending."
     },
     {
       "id": "TEST-APP-POLICY",
       "status": "NOT_RUN",
-      "scope": "Synthetic app identity and focus rules; no real third-party application test"
+      "scope": "Synthetic policy tests only; real foreground focus integration not yet implemented."
     },
     {
       "id": "TEST-POPUP",
       "status": "NOT_RUN",
-      "scope": "Native lab popup visual and interaction checks"
+      "scope": "InputLab popup build blocked by MSVC C2360; case scope fix added, pending rerun."
     }
   ],
-  "evidenceLevel": "L2 for baseline COM and core; experimental integration unverified until CI and desktop E2E."
+  "evidenceLevel": "L2 for Linux real Rime; Windows build and DLL integration pending."
 }
