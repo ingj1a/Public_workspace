@@ -1,30 +1,28 @@
-# Windows TSF Adapter — implementation contract
+# Windows TSF Adapter — Phase 0 probe
 
-This folder will contain the native COM text service. It is intentionally not implemented in Phase 0 yet.
+The current DLL is a **registration/activation probe only**. It registers a native TSF text service and subscribes to keyboard events, but deliberately returns `eaten = FALSE` for every key. It does not compose Pinyin, display candidates, or insert text yet.
 
-## Required interfaces and lifecycle
+## Build (Windows, Visual Studio 2022)
 
-- Implement `ITfTextInputProcessorEx` (or `ITfTextInputProcessor` where required) and `ITfKeyEventSink`.
-- Register/unregister the text service and language profile through documented TSF APIs.
-- Advise key-event sinks only after activation; unadvise every sink on deactivation.
-- Handle keystrokes in `OnTestKeyDown` and `OnKeyDown` without processing the same physical key twice.
-- Use TSF edit sessions for all composition-range mutations and commits.
-- Never call network/model/disk operations synchronously from TSF key callbacks.
-- Check secure/disabled/empty contexts and pass keys through when the service does not own the input.
-- Keep candidate UI non-activating and anchored to the current caret/layout.
+```powershell
+cmake -S NativeIME -B NativeIME/build -A x64
+cmake --build NativeIME/build --config Release
+```
 
-## Required Windows tests
+## Register (elevated PowerShell)
 
-1. Registration and removal on clean Windows 10/11 x64.
-2. Activation/deactivation repeated without leaked COM references or stale sinks.
-3. Compose, select, commit, backspace, cancel, focus loss and candidate paging.
-4. Ctrl/Alt/Win shortcuts pass through; host app receives keys exactly once.
-5. Password/secure fields and TSF-disabled contexts do not expose composition.
-6. Engine process unavailable: unhandled keys pass through and reconnect is asynchronous.
+Registering a text service modifies Windows COM/TSF registration. Only do this on a disposable test account or VM during Phase 0.
 
-## References
+```powershell
+regsvr32 .\NativeIME\build\Release\NativeIME.TSF.dll
+```
 
-- Microsoft Windows classic samples: https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/IME
-- Rime Weasel TSF implementation: https://github.com/rime/weasel/tree/master/WeaselTSF
+Unregister:
 
-Do not copy source files from these projects until their license and required notices have been reviewed and added.
+```powershell
+regsvr32 /u .\NativeIME\build\Release\NativeIME.TSF.dll
+```
+
+After registration, inspect Windows Settings → Time & language → Language & region → Chinese (Simplified) → Language options → Keyboards. Verify activation and confirm ordinary key input still reaches the focused application.
+
+Do not use on a production machine until registration, rollback, secure-field, and host-shortcut tests pass. This probe has not yet been compiled with MSVC or tested in Windows.
