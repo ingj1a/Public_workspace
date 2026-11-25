@@ -1,4 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <msctf.h>
 #include <objbase.h>
@@ -196,7 +195,7 @@ HRESULT RegisterProfile() {
 }
 }
 
-extern "C" __declspec(dllexport) HRESULT WINAPI DllGetClassObject(REFCLSID clsid, REFIID iid, void** object) {
+STDAPI DllGetClassObject(REFCLSID clsid, REFIID iid, void** object) {
     if (clsid != CLSID_NativeIME) return CLASS_E_CLASSNOTAVAILABLE;
     auto* factory = new (std::nothrow) NativeClassFactory();
     if (!factory) return E_OUTOFMEMORY;
@@ -205,11 +204,11 @@ extern "C" __declspec(dllexport) HRESULT WINAPI DllGetClassObject(REFCLSID clsid
     return hr;
 }
 
-extern "C" __declspec(dllexport) HRESULT WINAPI DllCanUnloadNow() {
+STDAPI DllCanUnloadNow() {
     return (g_objects.load() == 0 && g_locks.load() == 0) ? S_OK : S_FALSE;
 }
 
-extern "C" __declspec(dllexport) HRESULT WINAPI DllRegisterServer() {
+STDAPI DllRegisterServer() {
     const HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const HRESULT registry = RegisterComServer();
     const HRESULT profile = SUCCEEDED(registry) ? RegisterProfile() : registry;
@@ -217,7 +216,7 @@ extern "C" __declspec(dllexport) HRESULT WINAPI DllRegisterServer() {
     return FAILED(registry) ? registry : profile;
 }
 
-extern "C" __declspec(dllexport) HRESULT WINAPI DllUnregisterServer() {
+STDAPI DllUnregisterServer() {
     const HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     ITfInputProcessorProfiles* profiles = nullptr;
     if (SUCCEEDED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
