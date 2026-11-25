@@ -1,0 +1,74 @@
+{
+  "project": "NativeIME",
+  "phase": "phase-0",
+  "status": "in_progress",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "priority": "P0",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "REQ-002",
+      "priority": "P0",
+      "status": "PARTIAL"
+    },
+    {
+      "id": "REQ-003",
+      "priority": "P0",
+      "status": "PARTIAL"
+    },
+    {
+      "id": "REQ-004",
+      "priority": "P0",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "REQ-005",
+      "priority": "P0",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "REQ-006",
+      "priority": "P0",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "REQ-007",
+      "priority": "P0",
+      "status": "PARTIAL"
+    }
+  ],
+  "tests": [
+    {
+      "id": "TEST-CORE-001",
+      "status": "PASS",
+      "scope": "Portable deterministic seed-engine contract; Linux C++17 build and CTest run"
+    },
+    {
+      "id": "TEST-TSF-001",
+      "status": "NOT_RUN",
+      "scope": "Windows TSF registration and activation"
+    },
+    {
+      "id": "TEST-TSF-002",
+      "status": "NOT_RUN",
+      "scope": "Real composition and commit in Windows text controls"
+    },
+    {
+      "id": "TEST-TSF-003",
+      "status": "NOT_RUN",
+      "scope": "Chinese/English mode transitions"
+    },
+    {
+      "id": "TEST-TSF-004",
+      "status": "NOT_RUN",
+      "scope": "Host shortcut pass-through"
+    },
+    {
+      "id": "TEST-TSF-005",
+      "status": "NOT_RUN",
+      "scope": "Engine disconnect fail-open"
+    }
+  ]
+}
