@@ -1,5 +1,6 @@
 #include "core/rime_provider.hpp"
 #include <cstring>
+#include <filesystem>
 #include <rime_api.h>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -44,7 +45,7 @@ RimeProvider::RimeProvider(std::string shared,std::string user,std::string schem
     p.claimed=true;
     p.shared=std::move(shared); p.user=std::move(user); p.schema=std::move(schema);
 #ifdef _WIN32
-    if(modulePath.empty()) throw std::runtime_error("An absolute rime.dll path is required on Windows");
+    if(modulePath.empty() || !std::filesystem::path(modulePath).is_absolute()) throw std::runtime_error("An absolute rime.dll path is required on Windows");
     p.module=LoadLibraryExW(modulePath.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if(!p.module) throw std::runtime_error("LoadLibraryExW(rime.dll) failed: "+std::to_string(GetLastError()));
     using GetRimeApi = RimeApi* (__cdecl*)();
@@ -69,6 +70,7 @@ RimeProvider::RimeProvider(std::string shared,std::string user,std::string schem
         throw std::runtime_error("Rime schema unavailable");
     p.api->set_option(p.session,"ascii_mode",False);
     p.api->set_option(p.session,"simplification",True);
+    p.api->set_option(p.session,"zh_hans",True);
 }
 RimeProvider::~RimeProvider()=default;
 QueryResult RimeProvider::Query(const std::wstring& input){

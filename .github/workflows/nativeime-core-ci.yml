@@ -38,13 +38,25 @@ jobs:
           Invoke-WebRequest "https://github.com/rime/librime/releases/download/1.13.1/rime-deps-1c23358-Windows-msvc-x64.7z" -OutFile $deps
           $seven = (Get-Command 7z -ErrorAction Stop).Source
           & $seven x $main "-o$root\main" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Rime archive extraction failed" }
           & $seven x $deps "-o$root\deps" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Dependency archive extraction failed" }
           $dll = Get-ChildItem $root -Recurse -Filter rime.dll | Select-Object -First 1
           if (-not $dll) { throw "Official librime 1.13.1 rime.dll not found in release assets" }
-          $dllDirs = Get-ChildItem $root -Recurse -Filter *.dll | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique
-          $env:PATH = ($dllDirs -join ";") + ";" + $env:PATH
-          "NATIVEIME_RIME_DLL=$($dll.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "NATIVEIME_RIME_RUNTIME_DIR=$($dll.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Stage the official x64 release and its dependencies together. The loader
+          # intentionally does not search arbitrary PATH or the working directory.
+          $runtime = Join-Path $root "runtime"
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          Copy-Item $dll.FullName "$runtime\rime.dll"
+          Get-ChildItem "$root\main","$root\deps" -Recurse -File -Filter *.dll | ForEach-Object {
+            $dest = Join-Path $runtime $_.Name
+            if (Test-Path $dest) {
+              if ((Get-FileHash $dest).Hash -ne (Get-FileHash $_.FullName).Hash) { throw "Conflicting DLL: $($_.Name)" }
+            } else { Copy-Item $_.FullName $dest }
+          }
+          Get-ChildItem $runtime -File | Select-Object Name,Length | Format-Table
+          "NATIVEIME_RIME_DLL=$runtime\rime.dll" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "NATIVEIME_RIME_RUNTIME_DIR=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "NATIVEIME_RIME_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Checkout pinned Rime prelude data (Windows)
         if: runner.os == 'Windows'
@@ -58,25 +70,33 @@ jobs:
         shell: pwsh
         run: |
           $shared = "NativeIME/build-rime-shared"
-          git clone --depth 1 https://github.com/rime/rime-luna-pinyin.git "$env:RUNNER_TEMP\luna"
+          git clone https://github.com/rime/rime-luna-pinyin.git "$env:RUNNER_TEMP\luna"
           git -C "$env:RUNNER_TEMP\luna" checkout 84685a7e7793e43278ca29368977b79d74d37a03
+          if ($LASTEXITCODE -ne 0) { throw "Luna pin checkout failed" }
           Copy-Item "$env:RUNNER_TEMP\luna\*.yaml" $shared -Force
           Copy-Item "$env:RUNNER_TEMP\luna\*.dict.yaml" $shared -Force
-          git clone --depth 1 https://github.com/rime/rime-stroke.git "$env:RUNNER_TEMP\stroke"
+          git clone https://github.com/rime/rime-stroke.git "$env:RUNNER_TEMP\stroke"
           git -C "$env:RUNNER_TEMP\stroke" checkout 1e8fff9b9494ddec23b0cbc526bcfd8171a6fd48
+          if ($LASTEXITCODE -ne 0) { throw "Stroke pin checkout failed" }
           Copy-Item "$env:RUNNER_TEMP\stroke\*.yaml" $shared -Force
           Copy-Item "$env:RUNNER_TEMP\stroke\*.dict.yaml" $shared -Force
+          git clone https://github.com/rime/rime-essay.git "$env:RUNNER_TEMP\essay"
+          if ($LASTEXITCODE -ne 0) { throw "Essay checkout failed" }
+          git -C "$env:RUNNER_TEMP\essay" checkout d95eeae056df429ecf993038c325a216f0b28c5b
+          if ($LASTEXITCODE -ne 0) { throw "Essay pin checkout failed" }
+          Copy-Item "$env:RUNNER_TEMP\essay\essay.txt" $shared -Force
           $opencc = Get-ChildItem "$env:NATIVEIME_RIME_ROOT" -Recurse -Directory | Where-Object { $_.Name -eq "opencc" } | Select-Object -First 1
-          if ($opencc) { Copy-Item $opencc.FullName "$shared\opencc" -Recurse -Force }
+          if (-not $opencc) { throw "OpenCC conversion data missing from release archives" }
+          Copy-Item $opencc.FullName "$shared\opencc" -Recurse -Force
       - name: Configure
-        run: cmake -S NativeIME -B NativeIME/build -DCMAKE_BUILD_TYPE=Release -DNATIVEIME_WITH_RIME=$([bool]$env:NATIVEIME_RIME_DLL) -DNATIVEIME_RIME_DATA_DIR=NativeIME/build-rime-shared -DNATIVEIME_RIME_RUNTIME_DLL=$env:NATIVEIME_RIME_DLL
+        run: cmake -S NativeIME -B NativeIME/build -DCMAKE_BUILD_TYPE=Release
+      - name: Configure real Rime on Windows
+        if: runner.os == 'Windows'
+        run: cmake -S NativeIME -B NativeIME/build-rime-win -A x64 -DNATIVEIME_WITH_RIME=ON "-DNATIVEIME_RIME_DATA_DIR=$env:GITHUB_WORKSPACE/NativeIME/build-rime-shared" "-DNATIVEIME_RIME_RUNTIME_DLL=$env:NATIVEIME_RIME_DLL"
       - name: Build
         run: cmake --build NativeIME/build --config Release --parallel
       - name: Test
-        shell: pwsh
-        run: |
-          if ($env:NATIVEIME_RIME_RUNTIME_DIR) { $env:PATH = "$env:NATIVEIME_RIME_RUNTIME_DIR;$env:PATH" }
-          ctest --test-dir NativeIME/build -C Release --output-on-failure
+        run: ctest --test-dir NativeIME/build -C Release --output-on-failure
       - name: Upload native input lab (not an installer)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -93,6 +113,12 @@ jobs:
       - name: Test experimental COM and session contracts
         if: runner.os == 'Windows'
         run: ctest --test-dir NativeIME/build-experimental -C Release --output-on-failure
+      - name: Build real Rime on Windows
+        if: runner.os == 'Windows'
+        run: cmake --build NativeIME/build-rime-win --config Release --parallel
+      - name: Test real Rime on Windows
+        if: runner.os == 'Windows'
+        run: ctest --test-dir NativeIME/build-rime-win -C Release --output-on-failure
   real-rime:
     runs-on: ubuntu-24.04
     steps:

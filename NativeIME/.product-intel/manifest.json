@@ -90,13 +90,13 @@
     },
     {
       "id": "TEST-RIME",
-      "status": "NOT_RUN",
-      "scope": "Linux real librime 1.10.0 smoke passed in run 45588826219; Windows official 1.13.1 DLL test added, pending."
+      "status": "PARTIAL",
+      "scope": "Linux real Rime PASS. Windows 1.13.1 compiled, loader error 126 in run 45615307029; dependency staging fix pending rerun."
     },
     {
       "id": "TEST-APP-POLICY",
-      "status": "NOT_RUN",
-      "scope": "Synthetic policy tests only; real foreground focus integration not yet implemented."
+      "status": "PASS",
+      "scope": "Synthetic policy tests only (Windows and Linux); actual application detection NOT_RUN."
     },
     {
       "id": "TEST-POPUP",
@@ -104,5 +104,5 @@
       "scope": "InputLab popup build blocked by MSVC C2360; case scope fix added, pending rerun."
     }
   ],
-  "evidenceLevel": "L2 for Linux real Rime; Windows build and DLL integration pending."
+  "evidenceLevel": "L2 Windows core, COM smoke, Linux real Rime; Windows runtime and live E2E not passed."
 }
