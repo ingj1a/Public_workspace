@@ -13,14 +13,13 @@ std::atomic<long> g_objects{0};
 std::atomic<long> g_locks{0};
 
 constexpr wchar_t kClsidText[] = L"{9D61A6D1-2C5E-4B6B-9C8A-7A8E1F2D1A10}";
-constexpr wchar_t kProfileText[] = L"{D0B37C31-9E0B-4A68-8C5D-7A3A29D6E411}";
 const CLSID CLSID_NativeIME = {0x9d61a6d1, 0x2c5e, 0x4b6b, {0x9c,0x8a,0x7a,0x8e,0x1f,0x2d,0x1a,0x10}};
 const GUID GUID_NativeIME_Profile = {0xd0b37c31, 0x9e0b, 0x4a68, {0x8c,0x5d,0x7a,0x3a,0x29,0xd6,0xe4,0x11}};
 
 class NativeTextService final : public ITfTextInputProcessorEx, public ITfKeyEventSink {
 public:
     NativeTextService() { ++g_objects; }
-    ~NativeTextService() override { Deactivate(); --g_objects; }
+    ~NativeTextService() { Deactivate(); --g_objects; }
 
     STDMETHODIMP QueryInterface(REFIID riid, void** object) override {
         if (!object) return E_POINTER;
@@ -113,7 +112,7 @@ private:
 class NativeClassFactory final : public IClassFactory {
 public:
     NativeClassFactory() { ++g_objects; }
-    ~NativeClassFactory() override { --g_objects; }
+    ~NativeClassFactory() { --g_objects; }
     STDMETHODIMP QueryInterface(REFIID riid, void** object) override {
         if (!object) return E_POINTER;
         *object = nullptr;
