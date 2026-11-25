@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(nativeime_core
     src/core/pinyin_engine.cpp
+    src/core/app_policy.cpp
 )
 target_include_directories(nativeime_core PUBLIC src)
 target_compile_features(nativeime_core PUBLIC cxx_std_17)
@@ -34,6 +35,25 @@ enable_testing()
 add_test(NAME nativeime_core_tests COMMAND nativeime_core_tests)
 
 add_test(NAME nativeime_session_tests COMMAND nativeime_session_tests)
+
+add_executable(nativeime_app_policy_tests tests/app_policy_tests.cpp)
+target_link_libraries(nativeime_app_policy_tests PRIVATE nativeime_core)
+add_test(NAME nativeime_app_policy_tests COMMAND nativeime_app_policy_tests)
+
+option(NATIVEIME_WITH_RIME "Build isolated real librime candidate provider" OFF)
+set(NATIVEIME_RIME_DATA_DIR "" CACHE PATH "Path to installed Rime schema data")
+if(NATIVEIME_WITH_RIME)
+    find_path(RIME_INCLUDE_DIR rime_api.h REQUIRED)
+    find_library(RIME_LIBRARY NAMES rime librime REQUIRED)
+    add_library(nativeime_rime src/core/rime_provider.cpp)
+    target_include_directories(nativeime_rime PRIVATE ${RIME_INCLUDE_DIR})
+    target_link_libraries(nativeime_rime PUBLIC nativeime_core PRIVATE ${RIME_LIBRARY})
+    add_executable(nativeime_rime_smoke tests/rime_smoke.cpp)
+    target_link_libraries(nativeime_rime_smoke PRIVATE nativeime_rime)
+    if(NATIVEIME_RIME_DATA_DIR)
+        add_test(NAME nativeime_rime_smoke COMMAND nativeime_rime_smoke "${NATIVEIME_RIME_DATA_DIR}" "${CMAKE_BINARY_DIR}/rime-test-data")
+    endif()
+endif()
 
 option(NATIVEIME_EXPERIMENTAL_TSF "Enable unvalidated inline TSF composition for lab only" OFF)
 if(WIN32)

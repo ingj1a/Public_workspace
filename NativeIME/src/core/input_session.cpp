@@ -11,7 +11,8 @@ void InputSession::SetChinese(bool enabled) {
     chinese_ = enabled;
 }
 void InputSession::Refresh() {
-    candidates_ = engine_.Query(preedit_).candidates;
+    candidates_ = (query_ ? query_(preedit_) : engine_.Query(preedit_)).candidates;
+    if (candidates_.size() > 9) candidates_.resize(9);
     selected_ = 0;
 }
 InputResult InputSession::Commit(std::size_t index, bool appendSpace) {

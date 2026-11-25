@@ -1,6 +1,8 @@
 #pragma once
 #include "core/pinyin_engine.hpp"
 #include <cstddef>
+#include <functional>
+#include <utility>
 
 namespace nativeime::core {
 enum class Key { Letter, Space, Enter, Backspace, Escape, Previous, Next, Digit, Other };
@@ -15,6 +17,8 @@ struct InputResult {
 };
 class InputSession {
 public:
+    using QueryProvider = std::function<QueryResult(const std::wstring&)>;
+    explicit InputSession(QueryProvider query = {}) : query_(std::move(query)) {}
     InputResult Handle(KeyEvent event);
     void SetChinese(bool enabled);
     void Reset() noexcept;
@@ -27,6 +31,7 @@ private:
     void Refresh();
     InputResult Commit(std::size_t index, bool appendSpace);
     PinyinEngine engine_;
+    QueryProvider query_;
     bool chinese_ = true;
     std::wstring preedit_;
     std::vector<Candidate> candidates_;

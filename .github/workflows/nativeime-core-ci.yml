@@ -48,3 +48,18 @@ jobs:
       - name: Test experimental COM and session contracts
         if: runner.os == 'Windows'
         run: ctest --test-dir NativeIME/build-experimental -C Release --output-on-failure
+  real-rime:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated CI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librime-dev rime-data-luna-pinyin rime-prelude rime-essay
+          dpkg-query -W librime-dev rime-data-luna-pinyin
+      - name: Configure real Rime provider
+        run: cmake -S NativeIME -B NativeIME/build-rime -DNATIVEIME_WITH_RIME=ON -DNATIVEIME_RIME_DATA_DIR=/usr/share/rime-data -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build NativeIME/build-rime --parallel
+      - name: Test real Rime and core
+        run: ctest --test-dir NativeIME/build-rime --output-on-failure
