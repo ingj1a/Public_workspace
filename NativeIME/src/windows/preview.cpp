@@ -107,7 +107,7 @@ HWND Child(HWND parent,const wchar_t* klass,const wchar_t* label,DWORD style,int
 HWND heading, helper;
 LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM w,LPARAM l) {
     switch(msg) {
-    case WM_CREATE:
+    case WM_CREATE: {
         font=static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
         heading=Child(hwnd,L"STATIC",L"NativeIME  /  Input lab",0,10);
         helper=Child(hwnd,L"STATIC",L"Type nihao, ceshi, tupian. Space / 1–9 to select; Esc to cancel.",0,11);
@@ -122,6 +122,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM w,LPARAM l) {
         RegisterClassW(&pc);
         popup=CreateWindowExW(WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW,pc.lpszClassName,L"候选词",WS_POPUP|WS_BORDER,0,0,0,0,hwnd,nullptr,pc.hInstance,nullptr);
         SetFocus(editor); return 0;
+    }
     case WM_SIZE: {
         const int width=LOWORD(l),height=HIWORD(l);
         if(!editor) return 0;
