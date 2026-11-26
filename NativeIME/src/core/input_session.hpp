@@ -22,6 +22,7 @@ public:
     InputResult Handle(KeyEvent event);
     void SetChinese(bool enabled);
     void Reset() noexcept;
+    void ClearCandidates() noexcept { candidates_.clear(); selected_=0; }
     bool AcceptCandidates(const std::wstring& input, std::vector<Candidate> candidates);
     bool Chinese() const noexcept { return chinese_; }
     const std::wstring& Preedit() const noexcept { return preedit_; }

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <sddl.h>
+#include <filesystem>
 namespace nativeime::win {
 // Scope the endpoint to the current Windows logon session (not just the account).
 inline std::wstring LogonSid(HANDLE process=GetCurrentProcess()){
@@ -25,12 +26,26 @@ inline std::wstring LogonSid(HANDLE process=GetCurrentProcess()){
 inline std::wstring PipeName(const std::wstring& sid){
     return sid.empty()?std::wstring{}:L"\\\\.\\pipe\\NativeIME.Engine.v2."+sid;
 }
-inline bool VerifyServer(HANDLE pipe,const std::wstring& logon){
+inline std::wstring ModulePath(HMODULE module){
+    std::wstring path(32768,L'\0');
+    const DWORD n=GetModuleFileNameW(module,path.data(),static_cast<DWORD>(path.size()));
+    if(!n||n>=path.size())return {};
+    path.resize(n);return path;
+}
+inline bool VerifyServer(HANDLE pipe,const std::wstring& logon,const std::wstring& expected){
+    if(expected.empty()||!std::filesystem::path(expected).is_absolute())return false;
     ULONG pid=0;
     if(!GetNamedPipeServerProcessId(pipe,&pid))return false;
     HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);
     if(!process)return false;
-    bool ok=LogonSid(process)==logon;
+    wchar_t image[32768]{};DWORD length=32768;
+    bool ok=false;
+    try{
+        if(LogonSid(process)==logon&&QueryFullProcessImageNameW(process,0,image,&length)){
+            std::error_code ec;
+            ok=std::filesystem::equivalent(std::filesystem::path(image),std::filesystem::path(expected),ec)&&!ec;
+        }
+    }catch(...){ok=false;}
     CloseHandle(process);return ok;
 }
 }

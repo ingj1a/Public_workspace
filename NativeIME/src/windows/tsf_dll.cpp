@@ -12,6 +12,7 @@
 #include "focus_context.hpp"
 #include "tsf_popup.hpp"
 #include "async_engine.hpp"
+#include "pipe_security.hpp"
 #include <memory>
 #include <textstor.h>
 #include <cwchar>
@@ -121,7 +122,7 @@ public:
 
     STDMETHODIMP OnSetFocus(BOOL foreground) override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
-        if (!foreground) { InvalidateQuery(); popup_.Hide(); FinishRaw(); }
+        if (!foreground) { InvalidateQuery(); session_.ClearCandidates(); popup_.Hide(); FinishRaw(); }
 #else
         (void)foreground;
 #endif
@@ -133,19 +134,19 @@ public:
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         // Do not request a write lock during a document-focus notification.
         // Hide immediately; the next key/context termination handles cleanup.
-        InvalidateQuery(); popup_.Hide();
+        InvalidateQuery(); session_.ClearCandidates(); popup_.Hide();
 #endif
         return S_OK;
     }
     STDMETHODIMP OnPushContext(ITfContext*) override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
-        InvalidateQuery(); popup_.Hide();
+        InvalidateQuery(); session_.ClearCandidates(); popup_.Hide();
 #endif
         return S_OK;
     }
     STDMETHODIMP OnPopContext(ITfContext*) override {
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
-        InvalidateQuery(); popup_.Hide();
+        InvalidateQuery(); session_.ClearCandidates(); popup_.Hide();
 #endif
         return S_OK;
     }
@@ -196,13 +197,13 @@ public:
                 session_ = std::move(next);
                 *eaten = TRUE;
                 if(event.key==Key::Letter||event.key==Key::Backspace){
-                    InvalidateQuery();
+                    const bool valid=anchorValid_;InvalidateQuery();anchorValid_=valid;
                     if(engine_&&composition_&&!session_.Preedit().empty())engine_->Submit(generation_,session_.Preedit());
                 }
                 if(anchorValid_&&composition_&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_)
                     popup_.Show(GetFocus(),anchor_,session_);
                 else popup_.Hide();
-            } else { popup_.Hide(); }
+            } else { InvalidateQuery();session_.ClearCandidates();popup_.Hide();FinishRaw(); }
         } catch (...) { popup_.Hide(); /* Never allow a C++ exception to escape a COM callback. */ }
 #else
         (void)context; (void)key;
@@ -237,7 +238,7 @@ private:
     unsigned long long generation_=0;
     bool windowClassOwned_=false;
     wchar_t engineClass_[96]{};
-    void InvalidateQuery() noexcept {++generation_;if(engine_)engine_->Cancel();}
+    void InvalidateQuery() noexcept {++generation_;anchorValid_=false;if(engine_)engine_->Cancel();}
     static LRESULT CALLBACK EngineWndProc(HWND hwnd,UINT msg,WPARAM w,LPARAM l){
         if(msg==WM_NCCREATE){auto* cs=reinterpret_cast<CREATESTRUCTW*>(l);SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(cs->lpCreateParams));}
         auto* self=reinterpret_cast<NativeTextService*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
@@ -251,7 +252,12 @@ private:
             WNDCLASSW wc{};wc.lpfnWndProc=EngineWndProc;wc.hInstance=g_instance;wc.lpszClassName=engineClass_;
             if(!RegisterClassW(&wc))return;windowClassOwned_=true;
             engineWindow_=CreateWindowExW(0,engineClass_,L"",0,0,0,0,0,HWND_MESSAGE,nullptr,g_instance,this);
-            if(engineWindow_)engine_=std::make_unique<nativeime::win::AsyncEngine>(engineWindow_);
+            if(engineWindow_){
+                auto path=nativeime::win::ModulePath(g_instance);
+                if(path.empty()){StopEngine();return;}
+                auto service=std::filesystem::path(path).parent_path()/L"NativeIME.EngineService.exe";
+                engine_=std::make_unique<nativeime::win::AsyncEngine>(engineWindow_,service.wstring());
+            }
             else StopEngine();
         }catch(...){StopEngine();}
     }
@@ -264,9 +270,9 @@ private:
         try{
             if(!engine_)return;auto reply=engine_->Take();
             if(!reply||reply->generation!=generation_||!composition_||!context_||!Eligible(context_))return;
-            if(!reply->response.ok){popup_.Hide();return;}
+            if(!reply->response.ok){session_.ClearCandidates();popup_.Hide();return;}
             if(!session_.AcceptCandidates(reply->input,std::move(reply->response.candidates)))return;
-            if(anchorValid_&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_)popup_.Show(GetFocus(),anchor_,session_);
+            if(!anchorValid_||focusCookie_==TF_INVALID_COOKIE||blocked_||!popup_.Show(GetFocus(),anchor_,session_))session_.ClearCandidates();
         }catch(...){popup_.Hide();}
     }
     ITfComposition* composition_ = nullptr;

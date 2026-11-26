@@ -7,6 +7,8 @@
 #include <iostream>
 namespace {
 using namespace nativeime;
+HANDLE stopEvent=nullptr;
+BOOL WINAPI StopHandler(DWORD kind){if(kind==CTRL_C_EVENT||kind==CTRL_BREAK_EVENT){if(stopEvent)SetEvent(stopEvent);return TRUE;}return FALSE;}
 std::wstring Arg(int argc,wchar_t** argv,const wchar_t* key){for(int i=1;i+1<argc;++i)if(_wcsicmp(argv[i],key)==0)return argv[i+1];return {};}
 void Serve(HANDLE pipe,core::RimeProvider& rime){
     const auto deadline=GetTickCount64()+500;
@@ -37,19 +39,35 @@ int wmain(int argc,wchar_t** argv){
             PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,8192,8192,0,&sa);
         LocalFree(sd);
         if(pipe==INVALID_HANDLE_VALUE)return 3;
+        // The optional inherited event is for a controlling lab process, not a public shutdown command.
+        auto stopArg=Arg(argc,argv,L"--stop-handle");
+        stopEvent=stopArg.empty()?CreateEventW(nullptr,TRUE,FALSE,nullptr):
+            reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(std::stoull(stopArg)));
+        DWORD handleFlags=0;
+        if(!stopEvent||!GetHandleInformation(stopEvent,&handleFlags)){CloseHandle(pipe);return 5;}
+        SetConsoleCtrlHandler(StopHandler,TRUE);
+        {
         nativeime::core::RimeProvider rime(std::filesystem::path(shared).u8string(),std::filesystem::path(user).u8string(),std::filesystem::path(schema).u8string(),dll);
-        for(;;){
+        while(WaitForSingleObject(stopEvent,0)==WAIT_TIMEOUT){
             OVERLAPPED ov{};ov.hEvent=CreateEventW(nullptr,TRUE,FALSE,nullptr);
             if(!ov.hEvent){CloseHandle(pipe);return 3;}
             BOOL connected=ConnectNamedPipe(pipe,&ov);
             if(!connected){
                 const auto err=GetLastError();
                 if(err==ERROR_PIPE_CONNECTED)connected=TRUE;
-                else if(err==ERROR_IO_PENDING){DWORD bytes=0;connected=GetOverlappedResult(pipe,&ov,&bytes,TRUE);}
+                else if(err==ERROR_IO_PENDING){
+                    HANDLE waits[]={stopEvent,ov.hEvent};DWORD bytes=0;
+                    if(WaitForMultipleObjects(2,waits,FALSE,INFINITE)==WAIT_OBJECT_0+1)
+                        connected=GetOverlappedResult(pipe,&ov,&bytes,FALSE);
+                    else{CancelIoEx(pipe,&ov);GetOverlappedResult(pipe,&ov,&bytes,TRUE);}
+                }
             }
             CloseHandle(ov.hEvent);
-            if(connected)Serve(pipe,rime);
+            if(connected&&WaitForSingleObject(stopEvent,0)==WAIT_TIMEOUT){try{Serve(pipe,rime);}catch(...){/* reject this exchange; keep listening */}}
             DisconnectNamedPipe(pipe);
         }
+        }
+        SetConsoleCtrlHandler(StopHandler,FALSE);
+        CloseHandle(pipe);CloseHandle(stopEvent);stopEvent=nullptr;return 0;
     }catch(...){return 4;}
 }
