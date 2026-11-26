@@ -5,6 +5,10 @@
 #include <filesystem>
 #include <vector>
 #include <string>
+#include <future>
+#include <chrono>
+#include <algorithm>
+#include "engine_client.hpp"
 #include "diagnostics_page.hpp"
 #include "pipe_security.hpp"
 namespace {
@@ -15,14 +19,16 @@ HWND engineState=nullptr,startButton=nullptr,stopButton=nullptr,testEdit=nullptr
 HANDLE session=nullptr,stopEvent=nullptr,job=nullptr;
 bool stopping=false;
 DWORD lastExit=0;
-bool everStarted=false;
+bool everStarted=false,closing=false,engineReady=false;
+ULONGLONG nextProbe=0;
+std::future<bool> readiness;
 bool HasSession(){return session!=nullptr;}
 void CloseHandles(){
     if(session)CloseHandle(session);session=nullptr;
     if(stopEvent)CloseHandle(stopEvent);stopEvent=nullptr;
     SetDiagnosticsEngineJob(nullptr);
     if(job)CloseHandle(job);job=nullptr;
-    stopping=false;
+    stopping=false;engineReady=false;nextProbe=0;
 }
 HWND Control(HWND parent,const wchar_t* cls,const wchar_t* text,DWORD style,int id,int x,int y,int w,int h){
     HWND c=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,x,y,w,h,parent,
@@ -40,18 +46,30 @@ void Refresh(){
     if(session&&WaitForSingleObject(session,0)==WAIT_OBJECT_0){
         lastExit=1;GetExitCodeProcess(session,&lastExit);CloseHandles();
     }
+    if(readiness.valid()&&readiness.wait_for(std::chrono::seconds(0))==std::future_status::ready){
+        bool ok=readiness.get();engineReady=session&&!stopping&&ok;
+    }
+    if(session&&!stopping&&!readiness.valid()&&GetTickCount64()>=nextProbe){
+        nextProbe=GetTickCount64()+(engineReady?3000:1000);
+        const auto exe=(std::filesystem::path(ModulePath(nullptr)).parent_path()/L"NativeIME.EngineService.exe").wstring();
+        readiness=std::async(std::launch::async,[exe]{
+            EngineClient client(exe);nativeime::core::ipc::Response response;
+            return client.Query(L"nihao",response,500)&&std::any_of(response.candidates.begin(),response.candidates.end(),[](const auto& c){return c.text==L"你好";});
+        });
+    }
     std::wstring text;
     if(stopping)text=L"正在停止引擎会话…";
-    else if(session)text=L"引擎会话运行中；请在诊断与测试中确认真实引擎是否就绪。";
+    else if(session)text=engineReady?L"引擎已就绪 · 已确认真实词库候选。":L"引擎正在启动或恢复，暂不可用。";
     else if(everStarted&&lastExit)text=L"引擎会话退出，状态码 "+std::to_wstring(lastExit)+L"。";
     else text=L"引擎会话未启动。";
     SetWindowTextW(engineState,text.c_str());
-    EnableWindow(startButton,!session);EnableWindow(stopButton,session&&!stopping);
+    EnableWindow(startButton,!session&&!readiness.valid()&&!closing);EnableWindow(stopButton,session&&!stopping&&!closing);
+    if(closing&&!session&&!readiness.valid())DestroyWindow(root);
 }
 bool Safe(const std::wstring& p){return !p.empty()&&p.find(L'"')==std::wstring::npos&&p.back()!=L'\\';}
 std::wstring Q(const std::wstring& p){return L"\""+p+L"\"";}
 bool StartSession(){
-    if(session)return false;
+    if(session||readiness.valid()||closing)return false;
     const auto base=std::filesystem::path(ModulePath(nullptr)).parent_path();
     const auto exe=(base/L"NativeIME.Session.exe").wstring();
     const auto shared=(base/L"shared").wstring(),dll=(base/L"runtime"/L"rime.dll").wstring();
@@ -115,7 +133,7 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             startButton=Control(home,L"BUTTON",L"启动引擎",BS_PUSHBUTTON|WS_TABSTOP,StartEngine,24,180,140,34);
             stopButton=Control(home,L"BUTTON",L"停止引擎",BS_PUSHBUTTON|WS_TABSTOP,StopEngine,174,180,140,34);
             Control(home,L"STATIC",L"实验中英文切换：Ctrl + Shift + F12（仅普通文本框且无组合输入）。\r\n诊断与测试内置，采集默认关闭。",0,0,24,246,630,50);
-            Control(home,L"STATIC",L"本构建不自动注册输入法、不修改默认输入法、不添加开机启动项。仅限隔离测试环境。",0,0,24,310,630,60);
+            Control(home,L"STATIC",L"Alpha 仅限隔离测试环境。请手动启用并选择 NativeIME，不修改默认输入法。",0,0,24,310,630,60);
             Control(home,L"STATIC",L"原生输入测试区（不会写入诊断报告）",0,0,24,372,630,24);
             testEdit=Control(home,L"EDIT",L"",WS_BORDER|WS_TABSTOP|ES_AUTOHSCROLL,0,24,402,620,32);
             if(!engineState||!startButton||!stopButton||!testEdit)return -1;
@@ -132,8 +150,9 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
         case WM_TIMER:Refresh();return 0;
         case WM_CLOSE:
             if(!CloseDiagnosticsPage()){MessageBoxW(h,L"诊断测试仍在运行或采集尚未停止，请完成后退出。",L"NativeIME",MB_OK);return 0;}
-            if(session){if(!stopping){SetEvent(stopEvent);stopping=true;}MessageBoxW(h,L"正在停止引擎会话，待停止后再关闭。",L"NativeIME",MB_OK);return 0;}
-            DestroyWindow(h);return 0;
+            closing=true;
+            if(session&&!stopping){SetEvent(stopEvent);stopping=true;}
+            Refresh();return 0;
         case WM_DESTROY:KillTimer(h,1);CloseHandles();PostQuitMessage(0);return 0;
         }
     }catch(...){if(!session)CloseHandles();MessageBoxW(h,L"操作失败。",L"NativeIME",MB_OK|MB_ICONERROR);return 0;}

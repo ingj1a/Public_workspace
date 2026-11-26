@@ -191,9 +191,15 @@
     },
     {
       "id": "TEST-CORRECTION",
+      "status": "PASS",
+      "scope": "All fixed typo cases passed real Rime/IPC after bounded search and common lexicon supplement at 9d4f2a2; general accuracy not measured.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45773729655/job/139752258202"
+    },
+    {
+      "id": "TEST-ALPHA-PREPARE",
       "status": "NOT_RUN",
-      "scope": "Bounded reviewed typo rules, base candidate preservation, raw fallback, real Rime/IPC fixed corpus; new CI pending."
+      "scope": "Pinned upstream acquisition, engine startup with prepared directory, isolated registration and rollback; CI pending."
     }
   ],
-  "evidenceLevel": "33fac82 Windows 10/10, 11/11, 13/13 passed; new correction and embedded quality probe pending CI; interactive TSF NOT_RUN."
+  "evidenceLevel": "9d4f2a2 Windows 13/13, 14/14, 16/16 passed; Alpha preparation and rollback pending CI; active desktop NOT_RUN."
 }

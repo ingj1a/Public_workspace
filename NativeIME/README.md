@@ -20,13 +20,16 @@ The existing GitHub Actions workflow prepares pinned Windows librime runtime/sch
 | Windows real librime, IPC, supervisor recovery and readiness | PASS in CI |
 | Experimental TSF composition and popup | Implemented; active-profile desktop verification pending |
 | Professional-app context, Chinese/English switching | Base rules only |
-| Intelligent correction, sentence ranking, learning, professional dictionaries | Pending |
+| Intelligent correction and professional vocabulary | Fixed-corpus integration passed; general correction and learning pending |
+| Sentence preview | Experimental engine commit preview; not post-commit prediction |
 | Quiet Motion UI, performance, installer and signing | Pending |
 
-Latest confirmed baseline: [5191c84 Windows run](https://github.com/ingj1a/Public_workspace/actions/runs/45751423410/job/139679862719). This is not a release, and CI does not prove interactive TSF input. No production install or default profile change is authorized.
+Latest confirmed baseline: [9d4f2a2 Windows run](https://github.com/ingj1a/Public_workspace/actions/runs/45773729655/job/139752258202). This is not a release, and CI does not prove interactive TSF input. No production install or default profile change is authorized.
 
 See [PRODUCT](PRODUCT.md), [ROADMAP](ROADMAP.md), [engineering](.product-intel/ENGINEERING.md), [interaction](.product-intel/INTERACTION.md), [design](DESIGN.md).
 
 ## License
 
 Project license not finalized; the vendored librime API header has its own BSD-3-Clause notice. Runtime and data redistribution review remains a release gate.
+
+Alpha lab preparation uses official hash-pinned sources and explicit disposable-VM registration/rollback; see [ALPHA-LAB](tests/ALPHA-LAB.md). New deployment CI pending. No bundled third-party runtime or default profile change.
