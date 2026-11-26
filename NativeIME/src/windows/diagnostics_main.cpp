@@ -1,0 +1,157 @@
+#include <windows.h>
+#include <commdlg.h>
+#include <filesystem>
+#include <fstream>
+#include <future>
+#include <algorithm>
+#include <sstream>
+#include "diagnostics.hpp"
+#include "engine_client.hpp"
+#ifndef NATIVEIME_BUILD_ID
+#define NATIVEIME_BUILD_ID "local"
+#endif
+namespace {
+using namespace nativeime::win;
+namespace d=diag;
+enum {Start=101,Stop,Export,Clear,Check,Desktop};
+d::Capture capture;
+HWND root=nullptr,status=nullptr,details=nullptr,checkStatus=nullptr;
+HWND startButton=nullptr,stopButton=nullptr,exportButton=nullptr,clearButton=nullptr,checkButton=nullptr,desktopButton=nullptr;
+std::future<int> probe;
+HANDLE verifier=nullptr;
+int engineResult=-1,desktopResult=-1,preflightResult=-1;
+ULONGLONG engineMs=0;
+std::wstring Base(){return std::filesystem::path(ModulePath(nullptr)).parent_path().wstring();}
+const wchar_t* Result(int code){return code<0?L"未测试":code==0?L"通过":code==77?L"前置条件不足":L"失败";}
+HWND Control(const wchar_t* klass,const wchar_t* label,DWORD style,int id,int x,int y,int w,int h){
+    HWND out=CreateWindowExW(0,klass,label,WS_CHILD|WS_VISIBLE|style,x,y,w,h,root,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);
+    if(out)SendMessageW(out,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+    return out;
+}
+void Refresh(){
+    bool active=capture.Active();
+    SetWindowTextW(status,active?L"正在采集（最多30分钟）":L"未采集 · 数据仅保存在本机内存");
+    auto values=capture.Read();
+    std::wostringstream text;
+    text<<L"TSF 激活 "<<values[0]<<L"     组合输入 "<<values[1]<<L"     提交 "<<values[2]<<L"     取消 "<<values[3]
+        <<L"\r\n编辑失败 "<<values[4]<<L"     候选显示 "<<values[5]<<L"     候选不可用 "<<values[6]
+        <<L"\r\n过期响应 "<<values[7]<<L"     IPC 成功 "<<values[8]<<L"     IPC 失败 "<<values[9]
+        <<L"\r\nIPC 平均耗时 ";
+    if(values[8]+values[9])text<<static_cast<double>(values[10])/(values[8]+values[9])<<L" ms";
+    else text<<L"—";
+    text<<L"     引擎重启 "<<values[11];
+    SetWindowTextW(details,text.str().c_str());
+    std::wstring checks=L"真实引擎："+std::wstring(Result(engineResult))+L"    桌面前置："+Result(preflightResult)+L"    TSF 实测："+Result(desktopResult);
+    if(probe.valid()||verifier)checks+=L"  （检测中）";
+    SetWindowTextW(checkStatus,checks.c_str());
+    EnableWindow(startButton,!active);EnableWindow(stopButton,active);
+    EnableWindow(exportButton,!active&&!probe.valid()&&!verifier);
+    EnableWindow(clearButton,!active&&!probe.valid()&&!verifier);
+    EnableWindow(checkButton,!probe.valid()&&!verifier);
+    EnableWindow(desktopButton,!probe.valid()&&!verifier);
+}
+bool LaunchVerifier(bool real){
+    std::wstring exe=Base()+L"\\NativeIME.TsfDesktopE2E.exe";
+    std::wstring cmd=L"\""+exe+L"\" "+(real?L"--isolated-desktop":L"--preflight-only");
+    STARTUPINFOW si{sizeof(si)};PROCESS_INFORMATION pi{};
+    if(!CreateProcessW(exe.c_str(),cmd.data(),nullptr,nullptr,FALSE,real?0:CREATE_NO_WINDOW,nullptr,nullptr,&si,&pi))return false;
+    CloseHandle(pi.hThread);verifier=pi.hProcess;return true;
+}
+bool realVerifier=false;
+void SelfCheck(){
+    if(probe.valid()||verifier)return;
+    engineResult=preflightResult=-1;engineMs=0;
+    auto exe=Base()+L"\\NativeIME.EngineService.exe";
+    probe=std::async(std::launch::async,[exe]{
+        EngineClient client(exe);nativeime::core::ipc::Response response;
+        auto start=GetTickCount64();
+        bool ok=client.Query(L"nihao",response,500)&&std::any_of(response.candidates.begin(),response.candidates.end(),
+            [](const auto& c){return c.text==L"\u4f60\u597d";});
+        // Only fixed test text is queried. Duration is encoded as a bounded result.
+        return ok?static_cast<int>(GetTickCount64()-start):-2;
+    });
+    realVerifier=false;
+    if(!LaunchVerifier(false))preflightResult=1;
+}
+std::string Report(){
+    auto v=capture.Read();std::ostringstream out;
+    out<<"{\n  \"schema\":1,\n  \"build\":\"" NATIVEIME_BUILD_ID "\",\n  \"platform\":\"windows-x64\",\n"
+        <<"  \"duration_ms\":"<<capture.Duration()<<",\n  \"capture\":\"aggregate_only\",\n  \"events\":{";
+    for(unsigned i=0;i<d::Count;++i){if(i)out<<',';out<<"\n    \""<<d::Names[i]<<"\":"<<v[i];}
+    out<<"\n  },\n  \"self_test\":{\"engine\":"<<engineResult<<",\"engine_probe_ms\":"<<engineMs
+       <<",\"desktop_preflight\":"<<preflightResult<<",\"tsf_desktop\":"<<desktopResult
+       <<"},\n  \"notes\":\"-1 not run; 0 pass; 77 blocked; other codes fail. IPC timing is not end-to-end input latency. No user text collected.\"\n}\n";
+    return out.str();
+}
+void Save(){
+    if(capture.Active()||!capture.Stop())return;
+    SYSTEMTIME t{};GetLocalTime(&t);
+    wchar_t path[MAX_PATH]{};
+    swprintf_s(path,L"NativeIME-Diagnostics-%04u%02u%02u-%02u%02u%02u.json",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond);
+    OPENFILENAMEW ofn{sizeof(ofn)};ofn.hwndOwner=root;ofn.lpstrFilter=L"JSON report (*.json)\0*.json\0\0";
+    ofn.lpstrFile=path;ofn.nMaxFile=MAX_PATH;ofn.lpstrDefExt=L"json";ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+    if(!GetSaveFileNameW(&ofn))return;
+    std::ofstream file(std::filesystem::path(path),std::ios::binary|std::ios::trunc);
+    auto content=Report();file.write(content.data(),static_cast<std::streamsize>(content.size()));file.close();
+    MessageBoxW(root,file?L"已导出脱敏 JSON。请检查内容后再分享。":L"报告保存失败。",L"NativeIME",MB_OK|(file?MB_ICONINFORMATION:MB_ICONERROR));
+}
+LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
+    try{
+        switch(msg){
+        case WM_CREATE:
+            root=h;
+            Control(L"STATIC",L"NativeIME  /  诊断与测试",0,0,24,18,630,26);
+            status=Control(L"STATIC",L"",0,0,24,52,630,24);
+            startButton=Control(L"BUTTON",L"开始采集",BS_PUSHBUTTON|WS_TABSTOP,Start,24,88,140,32);
+            stopButton=Control(L"BUTTON",L"停止采集",BS_PUSHBUTTON|WS_TABSTOP,Stop,174,88,140,32);
+            exportButton=Control(L"BUTTON",L"导出脱敏 JSON",BS_PUSHBUTTON|WS_TABSTOP,Export,324,88,150,32);
+            clearButton=Control(L"BUTTON",L"清空",BS_PUSHBUTTON|WS_TABSTOP,Clear,484,88,110,32);
+            details=Control(L"STATIC",L"",0,0,24,144,630,110);
+            checkButton=Control(L"BUTTON",L"一键自检",BS_PUSHBUTTON|WS_TABSTOP,Check,24,270,140,32);
+            desktopButton=Control(L"BUTTON",L"隔离桌面 TSF 实测",BS_PUSHBUTTON|WS_TABSTOP,Desktop,174,270,200,32);
+            checkStatus=Control(L"STATIC",L"",0,0,24,320,630,44);
+            Control(L"STATIC",L"仅记录计数与 IPC 耗时，不记录输入文字、拼音、按键、密码或窗口标题。\r\n自检不修改系统配置；TSF 实测仅限已准备的隔离 Windows 测试环境。",0,0,24,380,630,62);
+            SetTimer(h,1,250,nullptr);Refresh();return 0;
+        case WM_COMMAND:
+            switch(LOWORD(w)){
+            case Start:if(!capture.Start())MessageBoxW(h,L"无法开始：可能已有采集会话。",L"NativeIME",MB_OK);break;
+            case Stop:if(!capture.Stop())MessageBoxW(h,L"暂时无法停止，请重试。",L"NativeIME",MB_OK);break;
+            case Clear:if(capture.Clear()){engineResult=desktopResult=preflightResult=-1;engineMs=0;}break;
+            case Export:Save();break;
+            case Check:SelfCheck();break;
+            case Desktop:
+                if(!probe.valid()&&!verifier&&MessageBoxW(h,L"仅在隔离 Windows 测试环境中执行。需要已启用实验 TSF、简体中文输入语言及运行中的引擎。继续？",L"NativeIME",MB_YESNO|MB_ICONWARNING)==IDYES){
+                    desktopResult=-1;realVerifier=true;if(!LaunchVerifier(true))desktopResult=1;
+                }break;
+            }
+            Refresh();return 0;
+        case WM_TIMER:
+            if(!capture.Active())capture.Stop();
+            if(probe.valid()&&probe.wait_for(std::chrono::seconds(0))==std::future_status::ready){
+                int r=probe.get();engineResult=r>=0?0:1;engineMs=r>=0?static_cast<ULONGLONG>(r):0;
+            }
+            if(verifier&&WaitForSingleObject(verifier,0)==WAIT_OBJECT_0){
+                DWORD code=1;GetExitCodeProcess(verifier,&code);CloseHandle(verifier);verifier=nullptr;
+                (realVerifier?desktopResult:preflightResult)=static_cast<int>(code);
+            }
+            Refresh();return 0;
+        case WM_CLOSE:
+            if(verifier||probe.valid()){MessageBoxW(h,L"测试正在运行，请先完成测试。",L"NativeIME",MB_OK);return 0;}
+            if(!capture.Stop())return 0;
+            DestroyWindow(h);return 0;
+        case WM_DESTROY:KillTimer(h,1);PostQuitMessage(0);return 0;
+        }
+    }catch(...){MessageBoxW(h,L"诊断操作失败。",L"NativeIME",MB_OK|MB_ICONERROR);return 0;}
+    return DefWindowProcW(h,msg,w,l);
+}
+}
+int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){
+    WNDCLASSW wc{};wc.lpfnWndProc=Proc;wc.hInstance=instance;wc.lpszClassName=L"NativeIME.Diagnostics";
+    wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=GetSysColorBrush(COLOR_WINDOW);
+    if(!RegisterClassW(&wc))return 1;
+    HWND h=CreateWindowW(wc.lpszClassName,L"NativeIME - 诊断与测试",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,
+        CW_USEDEFAULT,CW_USEDEFAULT,700,510,nullptr,nullptr,instance,nullptr);
+    if(!h)return 2;ShowWindow(h,show);UpdateWindow(h);
+    MSG msg{};BOOL r;while((r=GetMessageW(&msg,nullptr,0,0))>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return r<0?3:0;
+}

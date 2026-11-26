@@ -12,6 +12,7 @@
 #include "focus_context.hpp"
 #include "tsf_popup.hpp"
 #include "async_engine.hpp"
+#include "diagnostics.hpp"
 #include "pipe_security.hpp"
 #include <memory>
 #include <textstor.h>
@@ -79,7 +80,7 @@ public:
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         if(SUCCEEDED(hr)){
             app_=nativeime::win::CurrentApplication();
-            if(!secure_) StartEngine();
+            if(!secure_){ StartEngine(); diagnostics_.Record(nativeime::win::diag::Event::Activation); }
             ITfSource* source=nullptr;
             if(SUCCEEDED(threadManager_->QueryInterface(IID_PPV_ARGS(&source)))){
                 source->AdviseSink(IID_ITfThreadMgrEventSink,static_cast<ITfThreadMgrEventSink*>(this),&focusCookie_);
@@ -209,6 +210,10 @@ public:
             if (hr == S_OK) {
                 session_ = std::move(next);
                 *eaten = TRUE;
+                using E=nativeime::win::diag::Event;
+                if(!result.commit.empty())diagnostics_.Record(E::Commit);
+                else if(event.key==Key::Escape)diagnostics_.Record(E::Cancel);
+                else if(event.key==Key::Letter)diagnostics_.Record(E::Composition);
                 if(event.key==Key::Letter||event.key==Key::Backspace){
                     const bool valid=anchorValid_;InvalidateQuery();anchorValid_=valid;
                     if(engine_&&composition_&&!session_.Preedit().empty())engine_->Submit(generation_,session_.Preedit());
@@ -216,7 +221,7 @@ public:
                 if(anchorValid_&&composition_&&IsCurrentContext()&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_){
                     if(!popup_.Show(GetFocus(),anchor_,session_))session_.ClearCandidates();
                 }else{popup_.Hide();session_.ClearCandidates();}
-            } else { InvalidateQuery();session_.ClearCandidates();popup_.Hide();FinishRaw(); }
+            } else { diagnostics_.Record(nativeime::win::diag::Event::EditFailure);InvalidateQuery();session_.ClearCandidates();popup_.Hide();FinishRaw(); }
         } catch (...) { session_.ClearCandidates();popup_.Hide(); /* Never allow a C++ exception to escape a COM callback. */ }
 #else
         (void)context; (void)key;
@@ -245,6 +250,7 @@ private:
     using KeyEvent = nativeime::core::KeyEvent;
     using Session = nativeime::core::InputSession;
     using Result = nativeime::core::InputResult;
+    nativeime::win::diag::Writer diagnostics_;
     Session session_{[](const std::wstring& input){return nativeime::core::QueryResult{input,{}};}};
     std::unique_ptr<nativeime::win::AsyncEngine> engine_;
     HWND engineWindow_=nullptr;
@@ -288,14 +294,17 @@ private:
     void OnEngineReply() noexcept {
         try{
             if(!engine_)return;auto reply=engine_->Take();
-            if(!reply||reply->generation!=generation_)return;
+            if(!reply)return;
+            if(reply->generation!=generation_){if(!secure_)diagnostics_.Record(nativeime::win::diag::Event::StaleReply);return;}
             if(!composition_||!IsCurrentContext()||!Eligible(context_)){session_.ClearCandidates();popup_.Hide();return;}
             if(!reply->response.ok){session_.ClearCandidates();popup_.Hide();return;}
             if(!session_.AcceptCandidates(reply->input,std::move(reply->response.candidates)))return;
             RECT fresh{};
             anchorValid_=nativeime::win::ReadNativeEditCaret(compositionFocus_,fresh);
             if(anchorValid_)anchor_=fresh;
-            if(!anchorValid_||focusCookie_==TF_INVALID_COOKIE||blocked_||!popup_.Show(compositionFocus_,anchor_,session_))session_.ClearCandidates();
+            if(!anchorValid_||focusCookie_==TF_INVALID_COOKIE||blocked_||!popup_.Show(compositionFocus_,anchor_,session_)){
+                diagnostics_.Record(nativeime::win::diag::Event::CandidateUnavailable);session_.ClearCandidates();
+            }else diagnostics_.Record(nativeime::win::diag::Event::CandidateShown);
         }catch(...){session_.ClearCandidates();popup_.Hide();}
     }
     HWND compositionFocus_=nullptr;

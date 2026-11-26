@@ -1,5 +1,6 @@
 #pragma once
 #include "engine_client.hpp"
+#include "diagnostics.hpp"
 #include <atomic>
 #include <thread>
 #include <mutex>
@@ -35,6 +36,7 @@ public:
     }
 private:
     void Loop() noexcept{
+        diag::Writer diagnostics;
         for(;;){
             std::optional<EngineReply> work;
             {std::unique_lock<std::mutex> lock(mutex_);
@@ -47,7 +49,10 @@ private:
                 ready_.store(client_.Query(L"nihao",probe,80),std::memory_order_release);
                 continue;
             }
+            const auto start=GetTickCount64();
             const bool ok=client_.Query(work->input,work->response,80);
+            diagnostics.Record(ok?diag::Event::IpcOk:diag::Event::IpcFailure);
+            diagnostics.Record(diag::Event::IpcMilliseconds,GetTickCount64()-start);
             ready_.store(ok,std::memory_order_release);
             if(!ok)work->response={};
             {std::lock_guard<std::mutex> lock(mutex_);if(stopping_)return;reply_=std::move(work);}

@@ -2,6 +2,7 @@
 // scheduled task, elevated process or TSF callback process creation.
 #include <windows.h>
 #include "pipe_security.hpp"
+#include "diagnostics.hpp"
 #include <filesystem>
 #include <iostream>
 namespace {
@@ -37,7 +38,7 @@ int wmain(int argc,wchar_t** argv){
         // Do not pass the controller's event to the service.
         SetHandleInformation(stop.h,HANDLE_FLAG_INHERIT,0);
         stopping=stop.h;SetConsoleCtrlHandler(Handler,TRUE);
-        int failures=0;
+        int failures=0;nativeime::win::diag::Writer diagnostics;
         while(WaitForSingleObject(stop.h,0)==WAIT_TIMEOUT){
             SECURITY_ATTRIBUTES sa{sizeof(sa),nullptr,TRUE};
             Handle childStop(CreateEventW(&sa,TRUE,FALSE,nullptr));
@@ -80,6 +81,7 @@ int wmain(int argc,wchar_t** argv){
             if(code==3)return 9;
             if(GetTickCount64()-begin>60000)failures=0;
             if(++failures>3)return 10;
+            diagnostics.Record(nativeime::win::diag::Event::SupervisorRestart);
             const DWORD delay=500u<<(failures-1);
             std::cerr<<"Engine exit "<<code<<"; restarting after "<<delay<<" ms\n";
             if(WaitForSingleObject(stop.h,delay)!=WAIT_TIMEOUT)break;

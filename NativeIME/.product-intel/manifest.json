@@ -149,9 +149,15 @@
     },
     {
       "id": "TEST-SESSION-START",
+      "status": "PASS",
+      "scope": "Actual startup/shutdown passed at ac1ab60; desktop prerequisites blocked by Chinese language not active.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45750470167/job/139676754308"
+    },
+    {
+      "id": "TEST-DIAG-001",
       "status": "NOT_RUN",
-      "scope": "Native session launcher owns supervisor and verifies actual candidate, graceful shutdown and no remaining ready peer; CI pending."
+      "scope": "Native opt-in shared counter capture start/stop/reset, second session rejection; GUI and export pending runtime validation."
     }
   ],
-  "evidenceLevel": "L2 at 87b751d: 6/6, 7/7, 8/8 plus desktop verifier compilation; new session startup regression pending; real desktop NOT_RUN."
+  "evidenceLevel": "Windows 6/6, 7/7, 9/9 at ac1ab60; diagnostics changes pending CI; actual TSF desktop NOT_RUN."
 }
