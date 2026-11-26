@@ -54,7 +54,7 @@
     {
       "id": "TEST-TSF-001",
       "status": "NOT_RUN",
-      "scope": "COM smoke passed, no registration or activation on desktop."
+      "scope": "Disposable CI registration/profile lookup/COM creation/removal test added, not run; interactive activation not tested."
     },
     {
       "id": "TEST-TSF-002",
@@ -130,9 +130,15 @@
     },
     {
       "id": "TEST-NATIVE-CONTROL",
+      "status": "PASS",
+      "scope": "Real Rime + production async client + native popup + Win32 EDIT insertion (not TSF edit session) at 109cb98",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45740650958/job/139644518268"
+    },
+    {
+      "id": "TEST-SUPERVISOR",
       "status": "NOT_RUN",
-      "scope": "Real Rime + production async client + native popup + Win32 EDIT insertion (not TSF edit session), pending CI."
+      "scope": "Explicit native supervisor with child job, inherited stop event and bounded restart; compile/runtime pending."
     }
   ],
-  "evidenceLevel": "L2 for Windows cross-process Rime and fault recovery at 61cd2f4; native control integration pending; real registered TSF and visual acceptance NOT_RUN."
+  "evidenceLevel": "L2 at 109cb98 for native control and IPC; actual TSF keyboard/profile activation NOT_RUN; new registration test and supervisor pending."
 }
