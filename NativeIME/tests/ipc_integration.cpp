@@ -1,6 +1,9 @@
 #include "windows/engine_client.hpp"
 #include "windows/pipe_security.hpp"
 #include "windows/pipe_io.hpp"
+#include "windows/async_engine.hpp"
+#include "windows/tsf_popup.hpp"
+#include "core/input_session.hpp"
 #include <windows.h>
 #include <algorithm>
 #include <iostream>
@@ -31,6 +34,58 @@ bool Ready(const win::EngineClient& client){
         Sleep(100);
     }return false;
 }
+// Real engine + production async client + native popup and EDIT.
+// EM_REPLACESEL is not a TSF edit session.
+bool NativeControlIntegration(const std::wstring& exe){
+    HWND root=CreateWindowExW(0,L"STATIC",L"NativeIME integration test",WS_OVERLAPPEDWINDOW,
+        40,40,500,300,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    if(!root)return false;
+    HWND edit=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_VISIBLE|ES_AUTOHSCROLL,
+        12,12,400,32,root,nullptr,GetModuleHandleW(nullptr),nullptr);
+    bool ok=false;
+    if(edit){
+        ShowWindow(root,SW_SHOWNOACTIVATE);
+        core::InputSession session([](const std::wstring& p){return core::QueryResult{p,{}};});
+        for(auto ch:std::wstring(L"nihao"))session.Handle({core::Key::Letter,ch});
+        win::AsyncEngine async(edit,exe);
+        for(unsigned long long generation=1;generation<=5&&!ok;++generation){
+            async.Submit(generation,L"nihao");
+            const auto end=GetTickCount64()+1000;
+            while(GetTickCount64()<end){
+                MSG msg{};while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){
+                    if(msg.message!=win::EngineReady){TranslateMessage(&msg);DispatchMessageW(&msg);}
+                }
+                auto reply=async.Take();
+                if(!reply){Sleep(5);continue;}
+                if(reply->generation!=generation)continue;
+                if(!reply->response.ok)break;
+                ok=session.AcceptCandidates(reply->input,std::move(reply->response.candidates));break;
+            }
+        }
+        async.Stop();
+        if(ok){
+            const auto it=std::find_if(session.Candidates().begin(),session.Candidates().end(),[](const auto& c){return c.text==L"你好";});
+            ok=it!=session.Candidates().end();
+            if(ok){
+                const auto index=std::distance(session.Candidates().begin(),it);
+                POINT pt{20,40};ClientToScreen(edit,&pt);
+                RECT anchor{pt.x,pt.y,pt.x+1,pt.y+16};
+                win::TsfPopup popup;const HWND prior=GetFocus();
+                ok=popup.Show(edit,anchor,session)&&popup.Visible()&&GetFocus()==prior;
+                if(ok){
+                    auto result=session.Handle({core::Key::Digit,static_cast<wchar_t>(L'1'+index)});
+                    SendMessageW(edit,EM_REPLACESEL,TRUE,reinterpret_cast<LPARAM>(result.commit.c_str()));
+                    wchar_t actual[64]{};GetWindowTextW(edit,actual,64);
+                    popup.Hide();
+                    ok=result.consumed&&std::wstring(actual)==L"你好"&&!popup.Visible();
+                }
+            }
+        }
+    }
+    DestroyWindow(root);
+    if(ok)std::cout<<"Real Rime async candidate, native popup and Win32 EDIT insertion passed (not TSF edit session)\n";
+    return ok;
+}
 int wmain(int argc,wchar_t** argv){
     if(argc!=5)return 1;
     const std::wstring exe=std::filesystem::absolute(argv[1]).wstring();
@@ -38,6 +93,7 @@ int wmain(int argc,wchar_t** argv){
     if(client.Query(L"nihao",r,80)){std::cerr<<"Unexpected existing service\n";return 2;}
     {
         Child c;if(!c.start(exe,argv[2],argv[3],argv[4])||!Ready(client))return 3;
+        if(!NativeControlIntegration(exe))return 14;
         win::EngineClient wrong(win::ModulePath(nullptr));
         if(wrong.Query(L"nihao",r,1000))return 4;
         // A valid peer must recover after a client disconnects mid-frame.

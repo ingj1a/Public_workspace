@@ -163,7 +163,7 @@ public:
         *eaten = FALSE;
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         // Test callback is read-only: never advance composition twice.
-        if (Eligible(context) && (!composition_ || context == context_)) {
+        if (Eligible(context) && (!composition_ || (context == context_ && GetFocus()==compositionFocus_))) {
             auto event = Translate(key);
             *eaten = Wants(event);
         }
@@ -177,7 +177,7 @@ public:
         *eaten = FALSE;
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         try {
-            if (!Eligible(context) || (composition_ && context != context_)) {
+            if (!Eligible(context) || (composition_ && (context != context_ || GetFocus()!=compositionFocus_))) {
                 FinishRaw();
                 return S_OK;
             }
@@ -200,9 +200,9 @@ public:
                     const bool valid=anchorValid_;InvalidateQuery();anchorValid_=valid;
                     if(engine_&&composition_&&!session_.Preedit().empty())engine_->Submit(generation_,session_.Preedit());
                 }
-                if(anchorValid_&&composition_&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_)
-                    popup_.Show(GetFocus(),anchor_,session_);
-                else popup_.Hide();
+                if(anchorValid_&&composition_&&IsCurrentContext()&&focusCookie_!=TF_INVALID_COOKIE&&!blocked_){
+                    if(!popup_.Show(GetFocus(),anchor_,session_))session_.ClearCandidates();
+                }else{popup_.Hide();session_.ClearCandidates();}
             } else { InvalidateQuery();session_.ClearCandidates();popup_.Hide();FinishRaw(); }
         } catch (...) { popup_.Hide(); /* Never allow a C++ exception to escape a COM callback. */ }
 #else
@@ -266,15 +266,26 @@ private:
         if(engineWindow_){DestroyWindow(engineWindow_);engineWindow_=nullptr;}
         if(windowClassOwned_){UnregisterClassW(engineClass_,g_instance);windowClassOwned_=false;}
     }
+    bool IsCurrentContext() const noexcept {
+        if(!context_||!threadManager_||!compositionFocus_||GetFocus()!=compositionFocus_)return false;
+        ITfDocumentMgr* doc=nullptr;ITfContext* top=nullptr;
+        bool ok=SUCCEEDED(threadManager_->GetFocus(&doc))&&doc&&SUCCEEDED(doc->GetTop(&top))&&top==context_;
+        if(top)top->Release();if(doc)doc->Release();return ok;
+    }
     void OnEngineReply() noexcept {
         try{
             if(!engine_)return;auto reply=engine_->Take();
-            if(!reply||reply->generation!=generation_||!composition_||!context_||!Eligible(context_))return;
+            if(!reply||reply->generation!=generation_)return;
+            if(!composition_||!IsCurrentContext()||!Eligible(context_)){session_.ClearCandidates();popup_.Hide();return;}
             if(!reply->response.ok){session_.ClearCandidates();popup_.Hide();return;}
             if(!session_.AcceptCandidates(reply->input,std::move(reply->response.candidates)))return;
-            if(!anchorValid_||focusCookie_==TF_INVALID_COOKIE||blocked_||!popup_.Show(GetFocus(),anchor_,session_))session_.ClearCandidates();
+            RECT fresh{};
+            anchorValid_=nativeime::win::ReadNativeEditCaret(compositionFocus_,fresh);
+            if(anchorValid_)anchor_=fresh;
+            if(!anchorValid_||focusCookie_==TF_INVALID_COOKIE||blocked_||!popup_.Show(compositionFocus_,anchor_,session_))session_.ClearCandidates();
         }catch(...){popup_.Hide();}
     }
+    HWND compositionFocus_=nullptr;
     ITfComposition* composition_ = nullptr;
     ITfContext* context_ = nullptr;
     bool secure_ = false;
@@ -321,7 +332,7 @@ private:
             event.key==Key::Backspace||event.key==Key::Escape);
     }
     void DropComposition() noexcept {
-        auto* old=composition_; composition_=nullptr;
+        auto* old=composition_; composition_=nullptr;compositionFocus_=nullptr;
         auto* ctx=context_; context_=nullptr;
         InvalidateQuery();session_.Reset();
         blocked_=false; popup_.Hide();
@@ -360,7 +371,7 @@ private:
         ITfComposition* created=nullptr;
         if(SUCCEEDED(hr)) hr=manager->StartComposition(cookie,range,this,&created);
         if(SUCCEEDED(hr)&&created) {
-            composition_=created; context_=context; context_->AddRef();
+            composition_=created; context_=context; context_->AddRef();compositionFocus_=GetFocus();
         } else if(SUCCEEDED(hr)) hr=E_FAIL;
         if(range) range->Release();
         if(manager) manager->Release();

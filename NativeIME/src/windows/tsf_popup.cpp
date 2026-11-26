@@ -4,7 +4,19 @@
 #include "tsf_popup.hpp"
 #include <algorithm>
 #include <string>
+#include <cwchar>
 namespace nativeime::win {
+bool ReadNativeEditCaret(HWND edit,RECT& rect) noexcept {
+    if(!edit||GetFocus()!=edit||!IsWindowVisible(edit))return false;
+    wchar_t klass[16]{};
+    if(!GetClassNameW(edit,klass,16)||_wcsicmp(klass,L"Edit")!=0)return false;
+    GUITHREADINFO gui{sizeof(gui)};
+    if(!GetGUIThreadInfo(GetCurrentThreadId(),&gui)||gui.hwndCaret!=edit)return false;
+    POINT p[2]={{gui.rcCaret.left,gui.rcCaret.top},{gui.rcCaret.right,gui.rcCaret.bottom}};
+    if(!ClientToScreen(edit,&p[0])||!ClientToScreen(edit,&p[1]))return false;
+    rect={p[0].x,p[0].y,p[1].x,p[1].y};
+    return rect.bottom>rect.top&&rect.right>=rect.left;
+}
 bool ReadCaretRect(ITfContext* context,TfEditCookie cookie,ITfRange* range,RECT& rect) noexcept {
     if(!context||!range)return false;
     ITfContextView* view=nullptr;

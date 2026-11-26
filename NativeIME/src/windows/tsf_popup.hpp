@@ -18,5 +18,6 @@ private:
     HWND window_=nullptr;
     HWND owner_=nullptr;
 };
+bool ReadNativeEditCaret(HWND edit,RECT& rect) noexcept;
 bool ReadCaretRect(ITfContext* context,TfEditCookie cookie,ITfRange* collapsed,RECT& rect) noexcept;
 }

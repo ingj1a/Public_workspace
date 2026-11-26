@@ -19,7 +19,7 @@
       "id": "REQ-003",
       "priority": "P0",
       "status": "PARTIAL",
-      "note": "Five-entry seed fixture only; production dictionary not integrated"
+      "note": "Real Windows Rime and cross-process queries passed; full dictionary integration into live TSF unverified."
     },
     {
       "id": "REQ-004",
@@ -35,8 +35,8 @@
     {
       "id": "REQ-006",
       "priority": "P0",
-      "status": "NOT_RUN",
-      "note": "Engine IPC and fail-open recovery not implemented"
+      "status": "PARTIAL",
+      "note": "IPC fault recovery verified; live TSF fail-open not yet verified."
     },
     {
       "id": "REQ-007",
@@ -124,9 +124,15 @@
     },
     {
       "id": "TEST-IPC-E2E",
+      "status": "PASS",
+      "scope": "Real service child process, peer identity mismatch, malformed request, process crash, restart, graceful stop and stalled read at 61cd2f4",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45739769886/job/139641707741"
+    },
+    {
+      "id": "TEST-NATIVE-CONTROL",
       "status": "NOT_RUN",
-      "scope": "Real service child process, peer executable identity, malformed request, disconnect, restart, graceful stop, stalled read; Windows CI pending."
+      "scope": "Real Rime + production async client + native popup + Win32 EDIT insertion (not TSF edit session), pending CI."
     }
   ],
-  "evidenceLevel": "L2 at 3f79989; new process integration tests pending. Interactive TSF registration and E2E not run."
+  "evidenceLevel": "L2 for Windows cross-process Rime and fault recovery at 61cd2f4; native control integration pending; real registered TSF and visual acceptance NOT_RUN."
 }

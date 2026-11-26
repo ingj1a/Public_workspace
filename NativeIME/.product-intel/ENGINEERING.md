@@ -2,7 +2,7 @@
 
 ## Target platform
 
-Windows 10/11 x64 first. Windows ARM64 and older Windows versions are not in the initial acceptance matrix.
+Windows 10/11 x64 is the sole initial product and release target. Linux CI is retained only for portable C++ and librime cross-checks; no Linux product or runtime dependency, no WSL requirement. Windows-specific integration, GUI, compatibility and release gates must be verified on Windows.
 
 ## Architecture
 
