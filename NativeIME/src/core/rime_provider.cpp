@@ -1,5 +1,6 @@
 #include "core/rime_provider.hpp"
 #include "core/professional_lexicon.hpp"
+#include "core/pinyin_correction.hpp"
 #include <cstring>
 #include <filesystem>
 #include <rime_api.h>
@@ -74,7 +75,7 @@ RimeProvider::RimeProvider(std::string shared,std::string user,std::string schem
     p.api->set_option(p.session,"zh_hans",True);
 }
 RimeProvider::~RimeProvider()=default;
-QueryResult RimeProvider::Query(const std::wstring& input){
+QueryResult RimeProvider::QueryExact(const std::wstring& input){
     QueryResult out; out.normalized_input=PinyinEngine::Normalize(input);
     if(out.normalized_input.empty()||out.normalized_input.size()>64) return out;
     auto& p=*impl_; auto* api=p.api;
@@ -101,7 +102,22 @@ QueryResult RimeProvider::Query(const std::wstring& input){
         api->free_context(&ctx);
     }
     api->clear_composition(p.session);
+    return out;
+}
+QueryResult RimeProvider::Query(const std::wstring& input){
+    auto out=QueryExact(input);
+    if(out.normalized_input.empty()||out.normalized_input.size()>64)return out;
     AddProfessionalCandidate(out);
+    if(const auto* rule=FindCorrection(out.normalized_input)){
+        // At most one extra real lookup, only for reviewed typo spellings.
+        // A native Rime match is left in place; do not query again unnecessarily.
+        if(!std::any_of(out.candidates.begin(),out.candidates.end(),[&](const auto& c){return c.text==rule->expected;})){
+            auto verified=QueryExact(std::wstring(rule->spelling));
+            // The curated professional vocabulary is part of the engine's exact lookup.
+            AddProfessionalCandidate(verified);
+            AddCorrection(out,*rule,verified);
+        }
+    }
     return out;
 }
 }

@@ -4,6 +4,7 @@
 #include "windows/async_engine.hpp"
 #include "windows/tsf_popup.hpp"
 #include "core/input_session.hpp"
+#include "core/quality_probe.hpp"
 #include <windows.h>
 #include <algorithm>
 #include <iostream>
@@ -157,6 +158,11 @@ int wmain(int argc,wchar_t** argv){
         Child c;if(!c.start(exe,argv[2],argv[3],argv[4])||!Ready(client))return 3;
         if(!WaitAvailability(availability,true,3000))return 17;
         if(!NativeControlIntegration(exe))return 14;
+        const auto quality=core::RunQualityProbe([&](const std::wstring& p,std::vector<core::Candidate>& candidates){
+            core::ipc::Response response;if(!client.Query(p,response,1000))return false;
+            candidates=std::move(response.candidates);return true;
+        });
+        if(!quality.Passed()){std::cerr<<"Fixed IPC candidate quality probe failed\n";return 20;}
         win::EngineClient wrong(win::ModulePath(nullptr));
         if(wrong.Query(L"nihao",r,1000))return 4;
         // A valid peer must recover after a client disconnects mid-frame.

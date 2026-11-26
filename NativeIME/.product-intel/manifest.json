@@ -179,14 +179,21 @@
     },
     {
       "id": "TEST-PROFESSIONAL",
-      "status": "NOT_RUN",
-      "scope": "Original curated exact-spelling supplement; portable tests and real Rime smoke added."
+      "status": "PASS",
+      "scope": "Portable exact vocabulary tests and real Rime integration passed at 33fac82; desktop typing not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45768226008/job/139734246585"
     },
     {
       "id": "TEST-JOB-METRICS",
+      "status": "PARTIAL",
+      "scope": "Compiled at 33fac82; actual performance sampling/export not exercised.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45768226008/job/139734246585"
+    },
+    {
+      "id": "TEST-CORRECTION",
       "status": "NOT_RUN",
-      "scope": "Owned engine job accounting and peak commit export; actual sampling pending."
+      "scope": "Bounded reviewed typo rules, base candidate preservation, raw fallback, real Rime/IPC fixed corpus; new CI pending."
     }
   ],
-  "evidenceLevel": "acbbb11: Windows 9/9, 10/10, 12/12 passed. Professional candidate and job metrics changes pending CI. Interactive desktop TSF NOT_RUN."
+  "evidenceLevel": "33fac82 Windows 10/10, 11/11, 13/13 passed; new correction and embedded quality probe pending CI; interactive TSF NOT_RUN."
 }

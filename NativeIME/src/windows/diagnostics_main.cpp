@@ -11,6 +11,7 @@
 #include <optional>
 #include <psapi.h>
 #include "core/zip_store.hpp"
+#include "core/quality_probe.hpp"
 #include "diagnostics.hpp"
 #include "diagnostics_page.hpp"
 #include "engine_client.hpp"
@@ -24,7 +25,9 @@ enum {Start=101,Stop,Export,Clear,Check,Desktop};
 d::Capture capture;
 HWND root=nullptr,status=nullptr,details=nullptr,checkStatus=nullptr;
 HWND startButton=nullptr,stopButton=nullptr,exportButton=nullptr,clearButton=nullptr,checkButton=nullptr,desktopButton=nullptr;
-std::future<int> probe;
+struct ProbeResult { int code=1; ULONGLONG ms=0; nativeime::core::QualityResult quality; };
+std::future<ProbeResult> probe;
+nativeime::core::QualityResult qualityResult;
 HANDLE verifier=nullptr;
 int engineResult=-1,desktopResult=-1,preflightResult=-1;
 ULONGLONG engineMs=0;
@@ -86,6 +89,7 @@ void Refresh(){
     text<<L"     引擎重启 "<<values[11]<<L"\r\n候选延迟采样 "<<values[12]<<L"     中/英文切换 "<<values[22]<<L" / "<<values[21];
     SetWindowTextW(details,text.str().c_str());
     std::wstring checks=L"真实引擎："+std::wstring(Result(engineResult))+L"    桌面前置："+Result(preflightResult)+L"    TSF 实测："+Result(desktopResult);
+    if(qualityResult.exactTotal)checks+=L"\r\n固定语料：精确 "+std::to_wstring(qualityResult.exactHits)+L"/"+std::to_wstring(qualityResult.exactTotal)+L"  纠错 "+std::to_wstring(qualityResult.correctionHits)+L"/"+std::to_wstring(qualityResult.correctionTotal)+L"  反例 "+std::to_wstring(qualityResult.negativePass)+L"/"+std::to_wstring(qualityResult.negativeTotal);
     if(probe.valid()||verifier)checks+=L"  （检测中）";
     SetWindowTextW(checkStatus,checks.c_str());
     EnableWindow(startButton,!active);EnableWindow(stopButton,active);
@@ -104,7 +108,7 @@ bool LaunchVerifier(bool real){
 bool realVerifier=false;
 void SelfCheck(){
     if(probe.valid()||verifier)return;
-    engineResult=preflightResult=-1;engineMs=0;
+    engineResult=preflightResult=-1;engineMs=0;qualityResult={};
     auto exe=Base()+L"\\NativeIME.EngineService.exe";
     probe=std::async(std::launch::async,[exe]{
         EngineClient client(exe);nativeime::core::ipc::Response response;
@@ -112,7 +116,12 @@ void SelfCheck(){
         bool ok=client.Query(L"nihao",response,500)&&std::any_of(response.candidates.begin(),response.candidates.end(),
             [](const auto& c){return c.text==L"\u4f60\u597d";});
         // Only fixed test text is queried. Duration is encoded as a bounded result.
-        return ok?static_cast<int>(GetTickCount64()-start):-2;
+        ProbeResult result;result.code=ok?0:1;result.ms=GetTickCount64()-start;
+        if(ok)result.quality=nativeime::core::RunQualityProbe([&](const std::wstring& p,std::vector<nativeime::core::Candidate>& candidates){
+            nativeime::core::ipc::Response r;if(!client.Query(p,r,500))return false;
+            candidates=std::move(r.candidates);return true;
+        });
+        return result;
     });
     realVerifier=false;
     if(!LaunchVerifier(false))preflightResult=1;
@@ -137,6 +146,9 @@ std::string Report(){
     for(unsigned i=0;i<d::Count;++i){if(i)out<<',';out<<"\n    \""<<d::Names[i]<<"\":"<<v[i];}
     out<<"\n  },\n  \"self_test\":{\"engine\":"<<engineResult<<",\"engine_probe_ms\":"<<engineMs
        <<",\"desktop_preflight\":"<<preflightResult<<",\"tsf_desktop\":"<<desktopResult
+       <<"},\n  \"fixed_quality_probe\":{\"exact_hits\":"<<qualityResult.exactHits<<",\"exact_total\":"<<qualityResult.exactTotal
+       <<",\"correction_hits\":"<<qualityResult.correctionHits<<",\"correction_total\":"<<qualityResult.correctionTotal
+       <<",\"negative_pass\":"<<qualityResult.negativePass<<",\"negative_total\":"<<qualityResult.negativeTotal<<",\"query_failures\":"<<qualityResult.queryFailures
        <<"},\n  \"notes\":\"-1 not run; 0 pass; 77 blocked; other codes fail. Candidate latency measures submission to popup Show success, not compositor paint. Engine job CPU includes owned session, supervisor and engine descendants; peak commit is not working set. Blank samples unavailable. Host TSF resource usage excluded. No user text collected.\"\n}\n";
     return out.str();
 }
@@ -177,7 +189,7 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             switch(LOWORD(w)){
             case Start:if(!capture.Start())MessageBoxW(h,L"无法开始：可能已有采集会话。",L"NativeIME",MB_OK);else{samples.clear();previousJobCpu.reset();previousJobTick=0;captureStarted=lastSample=GetTickCount64();if(!ReadCpu(lastCpu))lastSample=0;}break;
             case Stop:if(!capture.Stop())MessageBoxW(h,L"暂时无法停止，请重试。",L"NativeIME",MB_OK);break;
-            case Clear:if(capture.Clear()){engineResult=desktopResult=preflightResult=-1;engineMs=0;samples.clear();previousJobCpu.reset();previousJobTick=0;captureStarted=lastSample=lastCpu=0;}break;
+            case Clear:if(capture.Clear()){engineResult=desktopResult=preflightResult=-1;engineMs=0;qualityResult={};samples.clear();previousJobCpu.reset();previousJobTick=0;captureStarted=lastSample=lastCpu=0;}break;
             case Export:Save();break;
             case Check:SelfCheck();break;
             case Desktop:
@@ -189,7 +201,7 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
         case WM_TIMER:
             if(capture.Active())SamplePerformance();else capture.Stop();
             if(probe.valid()&&probe.wait_for(std::chrono::seconds(0))==std::future_status::ready){
-                int r=probe.get();engineResult=r>=0?0:1;engineMs=r>=0?static_cast<ULONGLONG>(r):0;
+                auto r=probe.get();engineResult=r.code;engineMs=r.ms;qualityResult=r.quality;
             }
             if(verifier&&WaitForSingleObject(verifier,0)==WAIT_OBJECT_0){
                 DWORD code=1;GetExitCodeProcess(verifier,&code);CloseHandle(verifier);verifier=nullptr;

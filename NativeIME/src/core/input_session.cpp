@@ -1,4 +1,5 @@
 #include "core/input_session.hpp"
+#include "core/pinyin_correction.hpp"
 
 namespace nativeime::core {
 void InputSession::Reset() noexcept {
@@ -24,7 +25,7 @@ InputResult InputSession::Commit(std::size_t index, bool appendSpace) {
     if (preedit_.empty()) return {};
     if (!candidates_.empty() && index >= candidates_.size()) return {};
     InputResult result{true, candidates_.empty() ? preedit_ : candidates_[index].text};
-    if (candidates_.empty() && appendSpace) result.commit += L' ';
+    if (appendSpace && (candidates_.empty() || candidates_[index].annotation==RawPinyinTag)) result.commit += L' ';
     Reset();
     return result;
 }

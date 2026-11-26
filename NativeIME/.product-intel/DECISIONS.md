@@ -56,3 +56,6 @@ Continue diagnostics as an embedded page in NativeIME.exe while advancing the TS
 
 ## DEC-011 — Parallel product vocabulary and owned-job diagnostics
 Small original exact-spelling professional vocabulary is added after real Rime lookup; preserve the first two existing candidates and never auto-commit or infer app domain. No external dictionary licensing expansion. For resources use only the main app's own engine Job, not arbitrary process scans; peak commit is explicitly distinct from current working set. Both are experimental and require real Windows acceptance; no default profile change.
+
+## DEC-012 — Bounded typo suggestions and fixed quality diagnostics
+Choose a reviewed whitelist rather than exhaustive edit-distance search to bound extra lookup cost and false matches before desktop validation. At most one additional exact engine lookup; correction is visibly tagged and never displaces existing first two candidates or raw default. Fixed synthetic cases run through real Rime/IPC and embedded diagnostics; no user text or real-user hit-rate claim. Broader language modeling, correction coverage and latency remain unverified.

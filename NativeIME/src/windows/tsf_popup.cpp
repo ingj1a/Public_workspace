@@ -2,6 +2,7 @@
 #define NOMINMAX
 #endif
 #include "tsf_popup.hpp"
+#include "core/pinyin_correction.hpp"
 #include <algorithm>
 #include <string>
 #include <cwchar>
@@ -53,6 +54,8 @@ bool TsfPopup::Show(HWND owner,const RECT& anchor,const core::InputSession& sess
             text+=L"\r\n";
             text+=(i==session.Selected()?L"> ":L"  ");
             text+=std::to_wstring(i+1)+L" "+session.Candidates()[i].text;
+            const auto& tag=session.Candidates()[i].annotation;
+            if(tag==core::CorrectionTag||tag==core::RawPinyinTag)text+=L"  ["+tag+L"]";
         }
         MONITORINFO mi{sizeof(mi)};
         if(!GetMonitorInfoW(MonitorFromRect(&anchor,MONITOR_DEFAULTTONEAREST),&mi)){Hide();return false;}

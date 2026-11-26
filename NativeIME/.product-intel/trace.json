@@ -44,7 +44,8 @@
       ],
       "tests": [
         "TEST-CORE-001",
-        "TEST-PROFESSIONAL"
+        "TEST-PROFESSIONAL",
+        "TEST-CORRECTION"
       ],
       "evidence": [
         "NativeIME/tests/core_tests.cpp"

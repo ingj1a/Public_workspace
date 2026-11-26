@@ -1,5 +1,6 @@
 #include "core/rime_provider.hpp"
 #include "core/input_session.hpp"
+#include "core/quality_probe.hpp"
 #include <filesystem>
 #include <iostream>
 int main(int argc,char** argv){
@@ -26,6 +27,11 @@ int main(int argc,char** argv){
             for(const auto& c:terms.candidates)if(c.text==expected.second)present=true;
             if(!present||terms.candidates.size()>9){std::cerr<<"Professional candidate missing\n";return 5;}
         }
+        const auto quality=nativeime::core::RunQualityProbe([&](const std::wstring& p,std::vector<nativeime::core::Candidate>& candidates){candidates=rime.Query(p).candidates;return true;});
+        std::cout<<"Fixed quality probe: exact "<<quality.exactHits<<"/"<<quality.exactTotal
+                 <<", correction "<<quality.correctionHits<<"/"<<quality.correctionTotal
+                 <<", negative "<<quality.negativePass<<"/"<<quality.negativeTotal<<"\n";
+        if(!quality.Passed())return 6;
         std::cout<<"Real Rime candidate + session smoke passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 4;}
 }
