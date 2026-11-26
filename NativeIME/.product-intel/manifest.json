@@ -163,7 +163,17 @@
       "id": "TEST-MAIN-UI",
       "status": "NOT_RUN",
       "scope": "Actual native main child page ownership and navigation smoke; no interactive GUI acceptance."
+    },
+    {
+      "id": "TEST-MODE-SWITCH",
+      "status": "NOT_RUN",
+      "scope": "Ctrl+Shift+F12 scoped mode switch; synthetic shortcut eligibility tests added; live TSF desktop test pending."
+    },
+    {
+      "id": "TEST-DIAG-ZIP",
+      "status": "NOT_RUN",
+      "scope": "ZIP32 writer CRC and independent standard-library archive validation added; built-in GUI export and performance sampler pending CI."
     }
   ],
-  "evidenceLevel": "5191c84 Windows 7/7, 8/8, 10/10 passed; native main shell integration pending CI; active desktop TSF NOT_RUN."
+  "evidenceLevel": "Prior main UI build 5dac725 passed; new scoped mode switch and ZIP/performance sampling at acb395a/8e699cb pending Windows CI; interactive desktop TSF not run."
 }

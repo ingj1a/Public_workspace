@@ -50,3 +50,6 @@
 
 ## DEC-009 — One user-facing product, built-in diagnostics
 User explicitly rejected a standalone diagnostics executable. NativeIME.exe owns General and Diagnostics pages in one process, retains capture across navigation, and manages an explicitly started internal engine session. Remove standalone diagnostics target and staged artifact. Preserve out-of-process Rime/supervisor and lab-only verifier for fault containment. No forced registration/default, no release. Main UI smoke is not visual or desktop TSF acceptance.
+
+## DEC-010 — Diagnostics and input features progress together
+Continue diagnostics as an embedded page in NativeIME.exe while advancing the TSF product. Experimental manual language toggle is Ctrl+Shift+F12, restricted to writable supported edit controls and idle composition. Diagnostics report includes bounded process CPU/working-set sampling and ZIP32 bundle; CPU scope is the NativeIME UI process only. No user input content captured. Both changes require Windows CI and real desktop acceptance before enabling by default.
