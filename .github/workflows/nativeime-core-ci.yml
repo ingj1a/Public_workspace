@@ -119,6 +119,15 @@ jobs:
       - name: Test real Rime on Windows
         if: runner.os == 'Windows'
         run: ctest --test-dir NativeIME/build-rime-win -C Release --output-on-failure
+      - name: Check desktop verifier prerequisites (no profile changes)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "NativeIME/build/Release/NativeIME.TsfDesktopE2E.exe" --preflight-only
+          $code = $LASTEXITCODE
+          if ($code -eq 77) { Write-Host "BLOCKED: interactive desktop/profile prerequisites not met; no E2E pass claimed"; exit 0 }
+          if ($code -ne 0) { throw "Desktop preflight failed: $code" }
+          Write-Host "Desktop prerequisites present; actual E2E remains opt-in"
       - name: Upload Windows desktop verification host (not an installer)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -135,6 +144,7 @@ jobs:
           Copy-Item "NativeIME/build-experimental/Release/NativeIME.TSF.dll" $dest
           Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineService.exe" $dest
           Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineSupervisor.exe" $dest
+          Copy-Item "NativeIME/build-rime-win/Release/NativeIME.Session.exe" $dest
           Copy-Item "NativeIME/build/Release/NativeIME.DesktopLab.exe" $dest
           Copy-Item "NativeIME/build/Release/NativeIME.TsfDesktopE2E.exe" $dest
           Copy-Item "NativeIME/tests/DESKTOP-ACCEPTANCE.md" $dest

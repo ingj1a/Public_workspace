@@ -166,6 +166,18 @@ struct Route {
 };
 int Fail(int code,const char* why){std::cerr<<"FAIL "<<code<<": "<<why<<"\n";return code;}
 int Blocked(const char* why){std::cerr<<"BLOCKED: "<<why<<"\n";return kBlocked;}
+int Preflight(){
+    HDESK desktop=OpenInputDesktop(0,FALSE,DESKTOP_READOBJECTS);
+    if(!desktop)return Blocked("input desktop unavailable");
+    CloseDesktop(desktop);
+    Apartment com;if(FAILED(com.hr))return Fail(2,"COM initialization");
+    ComPtr<ITfInputProcessorProfiles> profiles;
+    if(FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(profiles.GetAddressOf()))))return Fail(4,"profile manager");
+    LANGID language=0;BOOL enabled=FALSE;
+    if(profiles->GetCurrentLanguage(&language)!=S_OK||language!=kLanguage)return Blocked("Simplified Chinese input language not active");
+    if(profiles->IsEnabledLanguageProfile(kTip,kLanguage,kProfile,&enabled)!=S_OK||!enabled)return Blocked("NativeIME profile not enabled");
+    std::cout<<"Desktop preconditions present (not an E2E pass)\n";return 0;
+}
 int Verify(){
     Apartment com;if(FAILED(com.hr))return Fail(2,"COM initialization");
     ThreadManager thread;
@@ -233,6 +245,7 @@ int Verify(){
 }
 }
 int wmain(int argc,wchar_t** argv){
+    if(argc==2&&wcscmp(argv[1],L"--preflight-only")==0)return Preflight();
     if(argc!=2||wcscmp(argv[1],L"--isolated-desktop")!=0)
         return Blocked("requires explicit --isolated-desktop on a disposable interactive Windows VM");
     return Verify();

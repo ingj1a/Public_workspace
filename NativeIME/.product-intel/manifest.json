@@ -144,8 +144,14 @@
     {
       "id": "TEST-DESKTOP-ROUTE",
       "status": "NOT_RUN",
-      "scope": "New opt-in native Windows interactive executable; CI compiles it only, actual prepared VM required."
+      "scope": "Verifier compiled at 87b751d; active-profile route NOT_RUN. New non-mutating preflight added.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45747856866/job/139668177535"
+    },
+    {
+      "id": "TEST-SESSION-START",
+      "status": "NOT_RUN",
+      "scope": "Native session launcher owns supervisor and verifies actual candidate, graceful shutdown and no remaining ready peer; CI pending."
     }
   ],
-  "evidenceLevel": "L2 at d902751: Windows 6/6, experimental 7/7, real Rime 8/8 incl readiness; interactive TSF route/GUI and performance NOT_RUN."
+  "evidenceLevel": "L2 at 87b751d: 6/6, 7/7, 8/8 plus desktop verifier compilation; new session startup regression pending; real desktop NOT_RUN."
 }
