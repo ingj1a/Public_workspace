@@ -136,6 +136,7 @@ jobs:
           Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineService.exe" $dest
           Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineSupervisor.exe" $dest
           Copy-Item "NativeIME/build/Release/NativeIME.DesktopLab.exe" $dest
+          Copy-Item "NativeIME/build/Release/NativeIME.TsfDesktopE2E.exe" $dest
           Copy-Item "NativeIME/tests/DESKTOP-ACCEPTANCE.md" $dest
       - name: Upload first-party experimental desktop candidate
         if: runner.os == 'Windows'

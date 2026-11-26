@@ -5,9 +5,13 @@
 - [x] Product scope and P0/P1/P2 requirements.
 - [x] Architecture and interaction contracts.
 - [x] Initial visual direction.
-- [ ] Portable Pinyin core implementation and tests.
-- [ ] Windows TSF adapter implementation.
-- [ ] Windows build, registration and real text insertion.
+- [x] Portable Pinyin core contracts and tests (seed fixture).
+- [x] Real librime candidate query on Windows, isolated service/IPC and supervisor fault tests.
+- [ ] Experimental TSF adapter implemented and compiled; active-profile keyboard-route test pending.
+- [x] Windows build, COM/TSF profile registration and removal.
+- [ ] Actual TSF composition, real candidate popup and exact commit in supported controls.
+- [ ] Prepared desktop E2E (new verifier; NOT_RUN), keyboard/focus/secure-field matrix.
+- [ ] Product startup integration (supervisor currently explicit).
 - [ ] Baseline performance measurement.
 
 Exit gate: a real Windows test machine can register the TSF service, type Pinyin into supported controls, commit/cancel text correctly, and preserve host shortcuts.

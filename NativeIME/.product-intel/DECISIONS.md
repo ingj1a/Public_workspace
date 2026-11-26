@@ -42,3 +42,8 @@
 - Alternatives: direct per-host spawning (rejected for duplicate process and input callback risk), explicit per-session supervisor with bounded restart (selected), Windows service (rejected for privilege and installation expansion).
 - Falsifier: verified child crash does not produce a new engine returning real candidates, or shutdown leaves a child alive. Test uses only descendants of its own Job object.
 - Desktop test artifact contains first-party binaries only; no automatic registration/default change or third-party distribution. No visual rating until actual screenshot. Windows release only; Linux auxiliary validation preserved.
+
+## DEC-008 — Active-profile TSF verification without global key injection
+- PDI Beta HARDEN/FOCUSED, scripts SCRIPT_NOT_RUN. Baseline d902751 verified in Windows CI; keep default pass-through and independent engine.
+- Compared ordinary EDIT insertion (already verified, insufficient) with actual process-scoped profile activation + TSF keystroke manager (selected) and global SendInput automation (rejected to avoid sending keys to another application).
+- Falsifier: missing real TSF context, no accepted first key, absent actual candidate, text/readback mismatch, duplicate commits or stale popup; no result may be inferred from compilation. Actual physical keyboard, custom editors, screenshots and resource metrics remain separate.

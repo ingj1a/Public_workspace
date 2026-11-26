@@ -1,54 +1,32 @@
 # NativeIME
 
-**NativeIME** is an open-source, native Windows Chinese Pinyin input method project focused on reliable typing, context-aware language switching, professional vocabulary, and a restrained desktop UI.
+Native Windows Chinese Pinyin input method project. Windows 10/11 x64 is the sole product/release platform; Linux CI is auxiliary portable-core validation only. No Linux, WSL, browser shell or network dependency for ordinary typing.
 
-> Status: Phase 0 — native TSF probe and standalone input lab. Not an installable IME. System-wide composition and candidate popup remain pending.
+> Phase 0, pre-alpha. Default TSF build is pass-through; the experimental TSF build connects to a real, separate librime service. Registration and cross-process recovery passed automated tests. Actual active-profile typing remains a release blocker.
 
-## Product principles
+## Build and verify
 
-- Native Windows Text Services Framework (TSF); no Electron/WebView shell.
-- Offline-first core typing; no network dependency for ordinary input.
-- Predictable keyboard behavior: never swallow shortcuts unless the IME explicitly owns the active composition.
-- Small idle footprint; optional heavyweight features load only when requested.
-- Transparent, user-editable app rules and vocabulary.
-- Privacy by default: no raw keystroke telemetry.
-
-## Current scope
-
-The input lab exercises the same bounded C++ session intended for later TSF integration, without modifying Windows settings. On Windows, build and run `build/Release/NativeIME.InputLab.exe`. Set the system keyboard to English when testing the lab. Try nihao, ceshi and tupian, Space, digits 1–9, arrows, Backspace, Escape, and the language button. The seed lexicon is only a fixture. The TSF DLL still passes all keys through; the new smoke test checks COM exports and object lifetime without registration.
-
-See:
-- [Product requirements](PRODUCT.md)
-- [Engineering decisions](.product-intel/ENGINEERING.md)
-- [Interaction contract](.product-intel/INTERACTION.md)
-- [Visual direction](DESIGN.md)
-- [Roadmap](ROADMAP.md)
-
-## Build the core
-
-Requires CMake 3.25+ and a C++17 compiler.
-
+Requires CMake 3.25+, C++17 and the Windows SDK.
 ```powershell
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -A x64
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
+The existing GitHub Actions workflow prepares pinned Windows librime runtime/schema data and builds the independent engine and experimental TSF. InputLab is a seed-only development harness. DesktopLab is an ordinary native EDIT host. TsfDesktopE2E is an opt-in actual TSF keyboard-route verifier, not a simulated IME. See [desktop acceptance](tests/DESKTOP-ACCEPTANCE.md).
 
-The portable core tests can also run on Linux/macOS. The Windows TSF adapter will require Windows 10/11 and the Windows SDK.
-
-## Project status
-
-| Capability | Status |
+| Capability | Evidence/status |
 |---|---|
-| Product/architecture contracts | In progress |
-| Portable Pinyin core contract | In progress |
-| TSF text service | Registration/activation probe builds; system runtime pending |
-| Composition and candidate UI | Portable session + native standalone lab; TSF integration pending |
-| Context-aware app rules | Rule core exists; custom-control coverage not started |
-| Professional dictionaries | Not started |
-| Engine IPC | Versioned named-pipe protocol + Windows service/client candidate; TSF async wiring pending |\n| Installer/updater | Not started |
-| Windows compatibility/performance tests | Not run |
+| Windows build, core, COM registration/removal | PASS in CI |
+| Windows real librime, IPC, supervisor recovery and readiness | PASS in CI |
+| Experimental TSF composition and popup | Implemented; active-profile desktop verification pending |
+| Professional-app context, Chinese/English switching | Base rules only |
+| Intelligent correction, sentence ranking, learning, professional dictionaries | Pending |
+| Quiet Motion UI, performance, installer and signing | Pending |
+
+Latest confirmed baseline: [d902751 Windows run](https://github.com/ingj1a/Public_workspace/actions/runs/45747247257/job/139666176684). This is not a release, and CI does not prove interactive TSF input. No production install or default profile change is authorized.
+
+See [PRODUCT](PRODUCT.md), [ROADMAP](ROADMAP.md), [engineering](.product-intel/ENGINEERING.md), [interaction](.product-intel/INTERACTION.md), [design](DESIGN.md).
 
 ## License
 
-The project license is not finalized. No third-party code or dictionary is bundled in this initial scaffold. A license will be selected after the dependency and data-license audit.
+Project license not finalized; the vendored librime API header has its own BSD-3-Clause notice. Runtime and data redistribution review remains a release gate.

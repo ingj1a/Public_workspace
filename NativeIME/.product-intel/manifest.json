@@ -60,7 +60,7 @@
     {
       "id": "TEST-TSF-002",
       "status": "NOT_RUN",
-      "scope": "Real composition and commit in Windows text controls"
+      "scope": "Interactive verifier source added: actual registered profile, TSF keyboard manager, native EDIT composition, real popup selection, exact readback via TSF edit session; execution NOT_RUN"
     },
     {
       "id": "TEST-TSF-003",
@@ -120,8 +120,8 @@
     {
       "id": "TEST-IPC-TSF",
       "status": "PARTIAL",
-      "scope": "Compile and portable session contracts passed; live TSF E2E NOT_RUN.",
-      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
+      "scope": "Async readiness/disconnect/reconnect and portable input sessions passed; actual active TSF keyboard routing NOT_RUN",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45747247257/job/139666176684"
     },
     {
       "id": "TEST-IPC-E2E",
@@ -137,10 +137,15 @@
     },
     {
       "id": "TEST-SUPERVISOR",
-      "status": "PARTIAL",
-      "scope": "Supervisor builds at aca9e2b; new actual auto-restart/clean stop test pending CI.",
-      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45741739491/job/139648142925"
+      "status": "PASS",
+      "scope": "Real supervisor automatic service restart and clean stop plus engine readiness/disconnect/reconnect integration at d902751",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45747247257/job/139666176684"
+    },
+    {
+      "id": "TEST-DESKTOP-ROUTE",
+      "status": "NOT_RUN",
+      "scope": "New opt-in native Windows interactive executable; CI compiles it only, actual prepared VM required."
     }
   ],
-  "evidenceLevel": "L2 at aca9e2b: registration/remove and previous Rime/IPC/native control tests pass; automatic supervisor restart added, pending. Actual profile activation, real typing and visual quality NOT_RUN."
+  "evidenceLevel": "L2 at d902751: Windows 6/6, experimental 7/7, real Rime 8/8 incl readiness; interactive TSF route/GUI and performance NOT_RUN."
 }
