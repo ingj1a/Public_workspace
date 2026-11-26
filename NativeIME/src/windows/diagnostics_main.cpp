@@ -14,6 +14,7 @@
 #include "core/quality_probe.hpp"
 #include "diagnostics.hpp"
 #include "diagnostics_page.hpp"
+#include "lab_environment.hpp"
 #include "engine_client.hpp"
 #ifndef NATIVEIME_BUILD_ID
 #define NATIVEIME_BUILD_ID "local"
@@ -89,7 +90,7 @@ void Refresh(){
     text<<L"     引擎重启 "<<values[11]<<L"\r\n候选延迟采样 "<<values[12]<<L"     中/英文切换 "<<values[22]<<L" / "<<values[21];
     SetWindowTextW(details,text.str().c_str());
     std::wstring checks=L"真实引擎："+std::wstring(Result(engineResult))+L"    桌面前置："+Result(preflightResult)+L"    TSF 实测："+Result(desktopResult);
-    if(qualityResult.exactTotal)checks+=L"\r\n固定语料：精确 "+std::to_wstring(qualityResult.exactHits)+L"/"+std::to_wstring(qualityResult.exactTotal)+L"  纠错 "+std::to_wstring(qualityResult.correctionHits)+L"/"+std::to_wstring(qualityResult.correctionTotal)+L"  反例 "+std::to_wstring(qualityResult.negativePass)+L"/"+std::to_wstring(qualityResult.negativeTotal);
+    if(qualityResult.exactTotal)checks+=std::wstring(L"\r\n固定语料（")+(qualityResult.Passed()?L"通过":L"未通过")+L"）：精确 "+std::to_wstring(qualityResult.exactHits)+L"/"+std::to_wstring(qualityResult.exactTotal)+L"  纠错 "+std::to_wstring(qualityResult.correctionHits)+L"/"+std::to_wstring(qualityResult.correctionTotal)+L"  反例 "+std::to_wstring(qualityResult.negativePass)+L"/"+std::to_wstring(qualityResult.negativeTotal);
     if(probe.valid()||verifier)checks+=L"  （检测中）";
     SetWindowTextW(checkStatus,checks.c_str());
     EnableWindow(startButton,!active);EnableWindow(stopButton,active);
@@ -140,9 +141,9 @@ std::string PerformanceCsv(){
  return out.str();
 }
 std::string Report(){
-    auto v=capture.Read();std::ostringstream out;
+    auto v=capture.Read();const auto env=InspectLabEnvironment();std::ostringstream out;
     out<<"{\n  \"schema\":2,\n  \"build\":\"" NATIVEIME_BUILD_ID "\",\n  \"platform\":\"windows-x64\",\n"
-        <<"  \"duration_ms\":"<<capture.Duration()<<",\n  \"capture\":\"aggregate_only\",\n  \"events\":{";
+        <<"  \"duration_ms\":"<<capture.Duration()<<",\n  \"capture\":\"aggregate_only\",\n  \"environment\":{\"runtime\":"<<env.runtime<<",\"schema\":"<<env.schema<<",\"service\":"<<env.service<<",\"registered_build\":"<<env.registered<<",\"profile_enabled\":"<<env.enabled<<",\"chinese_language\":"<<env.chineseLanguage<<"},\n  \"events\":{";
     for(unsigned i=0;i<d::Count;++i){if(i)out<<',';out<<"\n    \""<<d::Names[i]<<"\":"<<v[i];}
     out<<"\n  },\n  \"self_test\":{\"engine\":"<<engineResult<<",\"engine_probe_ms\":"<<engineMs
        <<",\"desktop_preflight\":"<<preflightResult<<",\"tsf_desktop\":"<<desktopResult

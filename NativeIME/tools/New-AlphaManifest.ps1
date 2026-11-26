@@ -1,6 +1,7 @@
 # CI only: pin exact bytes of the upstream archives and first-party candidate.
 param([Parameter(Mandatory)][string]$PackageRoot)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Alpha-Components.ps1')
 $root=(Resolve-Path -LiteralPath $PackageRoot).Path
 $sources=[ordered]@{
  'main.7z'='https://github.com/rime/librime/releases/download/1.13.1/rime-1c23358-Windows-msvc-x64.7z'
@@ -21,5 +22,6 @@ try{
     @{name=$name;url=$sources[$name];sha256=(Get-FileHash -LiteralPath $path).Hash}
  })
  $files=@(Get-ChildItem -LiteralPath $root -File | Where-Object {$_.Extension -in '.exe','.dll'} | ForEach-Object {@{name=$_.Name;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}})
+ Assert-AlphaComponents $files
  @{schema=1;build=$env:GITHUB_SHA;firstParty=$files;sources=$upstream} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $root 'alpha-manifest.json') -Encoding UTF8
 }finally{Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue}

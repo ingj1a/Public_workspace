@@ -101,7 +101,7 @@ jobs:
         run: python -c "import zipfile,json; z=zipfile.ZipFile('NativeIME/build/diagnostic-fixture.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; assert json.loads(z.read('summary.json'))['schema']==2"
       - name: Validate actual NativeIME report (Windows)
         if: runner.os == 'Windows'
-        run: python -c "import zipfile,json,csv,io; z=zipfile.ZipFile('NativeIME/build/report-smoke/nativeime-report-smoke.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; r=json.loads(z.read('summary.json')); assert r['capture']=='aggregate_only'; assert r['self_test']['engine']==-1; assert r['fixed_quality_probe']['correction_total']==0; assert all(v==0 for v in r['events'].values()); assert len(list(csv.reader(io.StringIO(z.read('performance.csv').decode()))))==1"
+        run: python -c "import zipfile,json,csv,io; z=zipfile.ZipFile('NativeIME/build/report-smoke/nativeime-report-smoke.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; r=json.loads(z.read('summary.json')); assert r['capture']=='aggregate_only'; assert r['self_test']['engine']==-1; assert set(r['environment'])=={'runtime','schema','service','registered_build','profile_enabled','chinese_language'}; assert all(v in (-1,0,1) for v in r['environment'].values()); assert r['fixed_quality_probe']['correction_total']==0; assert all(v==0 for v in r['events'].values()); assert len(list(csv.reader(io.StringIO(z.read('performance.csv').decode()))))==1"
       - name: Upload native input lab (not an installer)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -160,7 +160,8 @@ jobs:
         shell: pwsh
         run: |
           $dest = "NativeIME/desktop-candidate"
-          Copy-Item "NativeIME/tools/Prepare-Alpha.ps1","NativeIME/tools/Install-Alpha.ps1","NativeIME/tests/ALPHA-LAB.md" $dest
+          & "NativeIME/tools/Test-AlphaComponents.ps1"
+          Copy-Item "NativeIME/tools/Prepare-Alpha.ps1","NativeIME/tools/Install-Alpha.ps1","NativeIME/tools/Alpha-Components.ps1","NativeIME/tests/ALPHA-LAB.md" $dest
           & "NativeIME/tools/New-AlphaManifest.ps1" -PackageRoot $dest
           $lab = Join-Path $env:RUNNER_TEMP "nativeime-prepared-alpha"
           Copy-Item $dest $lab -Recurse

@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param([switch]$IsolatedVm, [string]$PackageRoot=$PSScriptRoot)
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'Alpha-Components.ps1')
 if (-not $IsolatedVm) { throw 'Explicit -IsolatedVm is required; never use this experimental package on a production PC.' }
 if (-not [Environment]::Is64BitProcess) { throw 'Use 64-bit Windows PowerShell.' }
 $root=(Resolve-Path -LiteralPath $PackageRoot).Path
@@ -10,8 +11,8 @@ if ($manifest.schema -ne 1 -or $manifest.build -notmatch '^[a-f0-9]{40}$') { thr
 function Assert-Hash($path,$hash) {
     if ($hash -notmatch '^[A-Fa-f0-9]{64}$' -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $hash) { throw "Hash mismatch: $path" }
 }
+Assert-AlphaComponents $manifest.firstParty
 foreach($item in $manifest.firstParty) {
-    if ($item.name -notmatch '^NativeIME[.A-Za-z0-9-]+\.(exe|dll)$') { throw 'Invalid first-party file name.' }
     Assert-Hash (Join-Path $root $item.name) $item.sha256
 }
 $allowed=[ordered]@{

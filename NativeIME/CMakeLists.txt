@@ -158,7 +158,7 @@ if(WIN32)
     if(DEFINED ENV{GITHUB_SHA})
         target_compile_definitions(NativeIME PRIVATE NATIVEIME_BUILD_ID="$ENV{GITHUB_SHA}")
     endif()
-    target_link_libraries(NativeIME PRIVATE nativeime_engine_client user32 gdi32 comdlg32 shell32 ole32 uuid psapi)
+    target_link_libraries(NativeIME PRIVATE nativeime_engine_client user32 gdi32 comdlg32 shell32 ole32 uuid psapi advapi32)
     add_test(NAME nativeime_main_ui_smoke COMMAND NativeIME --ui-smoke)
     set_tests_properties(nativeime_main_ui_smoke PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE)
     # Dedicated output location for the actual report serializer (no user data).

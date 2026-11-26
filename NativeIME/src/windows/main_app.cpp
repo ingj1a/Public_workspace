@@ -2,6 +2,7 @@
 // The engine session remains a private child, never a second UI application.
 #include <windows.h>
 #include <shlobj.h>
+#include <shellapi.h>
 #include <filesystem>
 #include <vector>
 #include <string>
@@ -9,13 +10,14 @@
 #include <chrono>
 #include <algorithm>
 #include "engine_client.hpp"
+#include "lab_environment.hpp"
 #include "diagnostics_page.hpp"
 #include "pipe_security.hpp"
 namespace {
 using namespace nativeime::win;
-enum {Home=201,Diagnostics,StartEngine,StopEngine};
+enum {Home=201,Diagnostics,StartEngine,StopEngine,CheckSetup,LanguageSettings};
 HWND root=nullptr,home=nullptr,diag=nullptr,homeNav=nullptr,diagNav=nullptr;
-HWND engineState=nullptr,startButton=nullptr,stopButton=nullptr,testEdit=nullptr;
+HWND engineState=nullptr,startButton=nullptr,stopButton=nullptr,testEdit=nullptr,setupState=nullptr;
 HANDLE session=nullptr,stopEvent=nullptr,job=nullptr;
 bool stopping=false;
 DWORD lastExit=0;
@@ -41,6 +43,12 @@ void ShowPage(bool diagnostic){
     ShowWindow(diag,diagnostic?SW_SHOW:SW_HIDE);
     EnableWindow(homeNav,diagnostic);EnableWindow(diagNav,!diagnostic);
     SetFocus(diagnostic?homeNav:diagNav);
+}
+void RefreshSetup(){
+    const auto s=InspectLabEnvironment();
+    std::wstring text=L"运行库："+std::wstring(LabStatus(s.runtime))+L"  词库："+LabStatus(s.schema)+L"  引擎组件："+LabStatus(s.service)
+        +L"\r\n本构建已注册："+LabStatus(s.registered)+L"  输入配置已启用："+LabStatus(s.enabled)+L"  简体中文："+LabStatus(s.chineseLanguage);
+    SetWindowTextW(setupState,text.c_str());
 }
 void Refresh(){
     if(session&&WaitForSingleObject(session,0)==WAIT_OBJECT_0){
@@ -133,15 +141,20 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             startButton=Control(home,L"BUTTON",L"启动引擎",BS_PUSHBUTTON|WS_TABSTOP,StartEngine,24,180,140,34);
             stopButton=Control(home,L"BUTTON",L"停止引擎",BS_PUSHBUTTON|WS_TABSTOP,StopEngine,174,180,140,34);
             Control(home,L"STATIC",L"实验中英文切换：Ctrl + Shift + F12（仅普通文本框且无组合输入）。\r\n诊断与测试内置，采集默认关闭。",0,0,24,246,630,50);
-            Control(home,L"STATIC",L"Alpha 仅限隔离测试环境。请手动启用并选择 NativeIME，不修改默认输入法。",0,0,24,310,630,60);
-            Control(home,L"STATIC",L"原生输入测试区（不会写入诊断报告）",0,0,24,372,630,24);
-            testEdit=Control(home,L"EDIT",L"",WS_BORDER|WS_TABSTOP|ES_AUTOHSCROLL,0,24,402,620,32);
-            if(!engineState||!startButton||!stopButton||!testEdit)return -1;
+            setupState=Control(home,L"STATIC",L"",0,0,24,302,630,45);
+            Control(home,L"BUTTON",L"检测输入环境",BS_PUSHBUTTON|WS_TABSTOP,CheckSetup,24,348,140,28);
+            Control(home,L"BUTTON",L"Windows 语言设置",BS_PUSHBUTTON|WS_TABSTOP,LanguageSettings,174,348,170,28);
+            Control(home,L"STATIC",L"原生输入测试区（不会写入诊断报告）",0,0,24,388,630,24);
+            testEdit=Control(home,L"EDIT",L"",WS_BORDER|WS_TABSTOP|ES_AUTOHSCROLL,0,24,416,620,30);
+            if(!engineState||!startButton||!stopButton||!testEdit||!setupState)return -1;
+            RefreshSetup();
             SetTimer(h,1,250,nullptr);ShowPage(false);Refresh();return 0;
         }
         case WM_COMMAND:
             switch(LOWORD(w)){
-            case Home:ShowPage(false);break;
+            case Home:ShowPage(false);RefreshSetup();break;
+            case CheckSetup:RefreshSetup();break;
+            case LanguageSettings:if(reinterpret_cast<INT_PTR>(ShellExecuteW(h,L"open",L"ms-settings:regionlanguage",nullptr,nullptr,SW_SHOWNORMAL))<=32)MessageBoxW(h,L"请手动打开 Windows 设置 > 时间和语言。",L"NativeIME",MB_OK);break;
             case Diagnostics:ShowPage(true);break;
             case StartEngine:if(!StartSession())MessageBoxW(h,L"引擎未启动。请检查测试运行库与已有会话。",L"NativeIME",MB_OK);break;
             case StopEngine:if(session&&!stopping){SetEvent(stopEvent);stopping=true;}break;
