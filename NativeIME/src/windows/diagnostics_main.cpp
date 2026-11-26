@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <sstream>
 #include "diagnostics.hpp"
+#include "diagnostics_page.hpp"
 #include "engine_client.hpp"
 #ifndef NATIVEIME_BUILD_ID
 #define NATIVEIME_BUILD_ID "local"
@@ -101,7 +102,7 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
         switch(msg){
         case WM_CREATE:
             root=h;
-            Control(L"STATIC",L"NativeIME  /  诊断与测试",0,0,24,18,630,26);
+            Control(L"STATIC",L"诊断与测试",0,0,24,18,630,26);
             status=Control(L"STATIC",L"",0,0,24,52,630,24);
             startButton=Control(L"BUTTON",L"开始采集",BS_PUSHBUTTON|WS_TABSTOP,Start,24,88,140,32);
             stopButton=Control(L"BUTTON",L"停止采集",BS_PUSHBUTTON|WS_TABSTOP,Stop,174,88,140,32);
@@ -136,22 +137,24 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
                 (realVerifier?desktopResult:preflightResult)=static_cast<int>(code);
             }
             Refresh();return 0;
-        case WM_CLOSE:
-            if(verifier||probe.valid()){MessageBoxW(h,L"测试正在运行，请先完成测试。",L"NativeIME",MB_OK);return 0;}
-            if(!capture.Stop())return 0;
-            DestroyWindow(h);return 0;
-        case WM_DESTROY:KillTimer(h,1);PostQuitMessage(0);return 0;
+        case WM_CLOSE:return 0; // lifetime belongs to the main application
+        case WM_DESTROY:KillTimer(h,1);capture.Stop();root=nullptr;return 0;
         }
     }catch(...){MessageBoxW(h,L"诊断操作失败。",L"NativeIME",MB_OK|MB_ICONERROR);return 0;}
     return DefWindowProcW(h,msg,w,l);
 }
 }
-int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){
-    WNDCLASSW wc{};wc.lpfnWndProc=Proc;wc.hInstance=instance;wc.lpszClassName=L"NativeIME.Diagnostics";
+
+namespace nativeime::win {
+HWND CreateDiagnosticsPage(HWND parent,HINSTANCE instance){
+    WNDCLASSW wc{};wc.lpfnWndProc=Proc;wc.hInstance=instance;wc.lpszClassName=L"NativeIME.DiagnosticsPage";
     wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=GetSysColorBrush(COLOR_WINDOW);
-    if(!RegisterClassW(&wc))return 1;
-    HWND h=CreateWindowW(wc.lpszClassName,L"NativeIME - 诊断与测试",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,
-        CW_USEDEFAULT,CW_USEDEFAULT,700,510,nullptr,nullptr,instance,nullptr);
-    if(!h)return 2;ShowWindow(h,show);UpdateWindow(h);
-    MSG msg{};BOOL r;while((r=GetMessageW(&msg,nullptr,0,0))>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return r<0?3:0;
+    if(!RegisterClassW(&wc)&&GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return nullptr;
+    return CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,L"",WS_CHILD|WS_CLIPCHILDREN,
+        0,0,680,480,parent,nullptr,instance,nullptr);
+}
+bool CloseDiagnosticsPage() noexcept {
+    if(verifier||probe.valid())return false;
+    return capture.Stop();
+}
 }

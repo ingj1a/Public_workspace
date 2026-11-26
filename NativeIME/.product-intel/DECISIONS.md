@@ -47,3 +47,6 @@
 - PDI Beta HARDEN/FOCUSED, scripts SCRIPT_NOT_RUN. Baseline d902751 verified in Windows CI; keep default pass-through and independent engine.
 - Compared ordinary EDIT insertion (already verified, insufficient) with actual process-scoped profile activation + TSF keystroke manager (selected) and global SendInput automation (rejected to avoid sending keys to another application).
 - Falsifier: missing real TSF context, no accepted first key, absent actual candidate, text/readback mismatch, duplicate commits or stale popup; no result may be inferred from compilation. Actual physical keyboard, custom editors, screenshots and resource metrics remain separate.
+
+## DEC-009 — One user-facing product, built-in diagnostics
+User explicitly rejected a standalone diagnostics executable. NativeIME.exe owns General and Diagnostics pages in one process, retains capture across navigation, and manages an explicitly started internal engine session. Remove standalone diagnostics target and staged artifact. Preserve out-of-process Rime/supervisor and lab-only verifier for fault containment. No forced registration/default, no release. Main UI smoke is not visual or desktop TSF acceptance.

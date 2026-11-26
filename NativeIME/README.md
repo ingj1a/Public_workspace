@@ -12,7 +12,7 @@ cmake -S . -B build -A x64
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
-The existing GitHub Actions workflow prepares pinned Windows librime runtime/schema data and builds the independent engine and experimental TSF. InputLab is a seed-only development harness. DesktopLab is an ordinary native EDIT host. TsfDesktopE2E is an opt-in actual TSF keyboard-route verifier, not a simulated IME. NativeIME.Session is the experimental native entry point for starting and stopping the engine/supervisor and optionally invoking the desktop verifier; CI startup regression pending. See [desktop acceptance](tests/DESKTOP-ACCEPTANCE.md).
+The existing GitHub Actions workflow prepares pinned Windows librime runtime/schema data and builds the independent engine and experimental TSF. InputLab is a seed-only development harness. DesktopLab is an ordinary native EDIT host. TsfDesktopE2E is an opt-in actual TSF keyboard-route verifier, not a simulated IME. NativeIME.exe is the native product shell with General and built-in Diagnostics and Testing pages; no separate diagnostics executable. NativeIME.Session is a private experimental engine lifecycle helper, also usable by CI; startup regression passed. See [diagnostics](tests/DIAGNOSTICS.md). See [desktop acceptance](tests/DESKTOP-ACCEPTANCE.md).
 
 | Capability | Evidence/status |
 |---|---|
@@ -23,7 +23,7 @@ The existing GitHub Actions workflow prepares pinned Windows librime runtime/sch
 | Intelligent correction, sentence ranking, learning, professional dictionaries | Pending |
 | Quiet Motion UI, performance, installer and signing | Pending |
 
-Latest confirmed baseline: [87b751d Windows run](https://github.com/ingj1a/Public_workspace/actions/runs/45747856866/job/139668177535). This is not a release, and CI does not prove interactive TSF input. No production install or default profile change is authorized.
+Latest confirmed baseline: [5191c84 Windows run](https://github.com/ingj1a/Public_workspace/actions/runs/45751423410/job/139679862719). This is not a release, and CI does not prove interactive TSF input. No production install or default profile change is authorized.
 
 See [PRODUCT](PRODUCT.md), [ROADMAP](ROADMAP.md), [engineering](.product-intel/ENGINEERING.md), [interaction](.product-intel/INTERACTION.md), [design](DESIGN.md).
 

@@ -155,9 +155,15 @@
     },
     {
       "id": "TEST-DIAG-001",
+      "status": "PARTIAL",
+      "scope": "Shared counter capture/start/stop/reset passed at 5191c84; built-in page, export UI and live TSF not yet verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45751423410/job/139679862719"
+    },
+    {
+      "id": "TEST-MAIN-UI",
       "status": "NOT_RUN",
-      "scope": "Native opt-in shared counter capture start/stop/reset, second session rejection; GUI and export pending runtime validation."
+      "scope": "Actual native main child page ownership and navigation smoke; no interactive GUI acceptance."
     }
   ],
-  "evidenceLevel": "Windows 6/6, 7/7, 9/9 at ac1ab60; diagnostics changes pending CI; actual TSF desktop NOT_RUN."
+  "evidenceLevel": "5191c84 Windows 7/7, 8/8, 10/10 passed; native main shell integration pending CI; active desktop TSF NOT_RUN."
 }

@@ -104,7 +104,7 @@ int Desktop(const std::wstring& exe,HANDLE cancel,HANDLE supervisor){
 }
 int wmain(int argc,wchar_t** argv){
     try{
-        if(argc!=8){std::cerr<<"Usage: NativeIME.Session.exe --engine-only-check|--run|--desktop-check --shared ABS --user ABS --rime-dll ABS\n";return 1;}
+        if(argc!=8&&argc!=10){std::cerr<<"Usage: NativeIME.Session.exe --engine-only-check|--run|--desktop-check --shared ABS --user ABS --rime-dll ABS\n";return 1;}
         std::wstring mode=argv[1],shared=Arg(argc,argv,L"--shared"),user=Arg(argc,argv,L"--user"),dll=Arg(argc,argv,L"--rime-dll");
         if(mode!=L"--engine-only-check"&&mode!=L"--run"&&mode!=L"--desktop-check")return 1;
         if(!SafePath(shared)||!SafePath(user)||!SafePath(dll)||!std::filesystem::is_directory(shared)||
@@ -119,7 +119,10 @@ int wmain(int argc,wchar_t** argv){
         // Never adopt or terminate a pre-existing service.
         win::EngineClient client(engine);core::ipc::Response response;
         if(client.Query(L"nihao",response,500)){std::cerr<<"Existing service detected; not starting a second session.\n";return 4;}
-        Handle cancel(CreateEventW(nullptr,TRUE,FALSE,nullptr));if(!cancel.value)return 5;
+        auto inherited=Arg(argc,argv,L"--stop-handle");
+        if(argc==10&&(mode!=L"--run"||inherited.empty()))return 1;
+        Handle cancel(inherited.empty()?CreateEventW(nullptr,TRUE,FALSE,nullptr):reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(std::stoull(inherited))));
+        DWORD handleFlags=0;if(!cancel.value||!GetHandleInformation(cancel.value,&handleFlags)||!SetHandleInformation(cancel.value,HANDLE_FLAG_INHERIT,0))return 5;
         stopping=cancel.value;SetConsoleCtrlHandler(StopHandler,TRUE);
         Session session;int result=6;
         if(session.Start(supervisor,shared,user,dll)){

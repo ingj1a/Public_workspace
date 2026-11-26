@@ -146,7 +146,7 @@ jobs:
           Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineSupervisor.exe" $dest
           Copy-Item "NativeIME/build-rime-win/Release/NativeIME.Session.exe" $dest
           Copy-Item "NativeIME/build/Release/NativeIME.DesktopLab.exe" $dest
-          Copy-Item "NativeIME/build/Release/NativeIME.Diagnostics.exe" $dest
+          Copy-Item "NativeIME/build/Release/NativeIME.exe" $dest
           Copy-Item "NativeIME/tests/DIAGNOSTICS.md" $dest
           Copy-Item "NativeIME/build/Release/NativeIME.TsfDesktopE2E.exe" $dest
           Copy-Item "NativeIME/tests/DESKTOP-ACCEPTANCE.md" $dest
