@@ -128,13 +128,34 @@ bool SupervisorIntegration(const std::wstring& exe,const std::wstring& superviso
     if(ok)std::cout<<"Supervisor: real service restarted automatically and both processes stopped cleanly\n";
     return ok;
 }
+bool WaitAvailability(win::AsyncEngine& async,bool expected,DWORD timeout){
+    const auto end=GetTickCount64()+timeout;
+    while(GetTickCount64()<end){
+        if(async.Ready()==expected)return true;
+        async.RequestProbe();Sleep(20);
+    }
+    return async.Ready()==expected;
+}
+bool WaitReply(win::AsyncEngine& async,unsigned long long generation,bool expected){
+    const auto end=GetTickCount64()+2000;
+    while(GetTickCount64()<end){
+        auto r=async.Take();
+        if(r&&r->generation==generation)return r->response.ok==expected&&async.Ready()==expected;
+        Sleep(10);
+    }
+    return false;
+}
 int wmain(int argc,wchar_t** argv){
     if(argc!=6)return 1;
     const std::wstring exe=std::filesystem::absolute(argv[1]).wstring();
     win::EngineClient client(exe);core::ipc::Response r;
     if(client.Query(L"nihao",r,80)){std::cerr<<"Unexpected existing service\n";return 2;}
+    win::AsyncEngine availability(nullptr,exe);
+    availability.Submit(1,L"nihao");
+    if(!WaitReply(availability,1,false))return 16;
     {
         Child c;if(!c.start(exe,argv[2],argv[3],argv[4])||!Ready(client))return 3;
+        if(!WaitAvailability(availability,true,3000))return 17;
         if(!NativeControlIntegration(exe))return 14;
         win::EngineClient wrong(win::ModulePath(nullptr));
         if(wrong.Query(L"nihao",r,1000))return 4;
@@ -149,9 +170,13 @@ int wmain(int argc,wchar_t** argv){
         // Force termination of only the child created by this test.
         TerminateProcess(c.process,42);WaitForSingleObject(c.process,5000);
         if(client.Query(L"nihao",r,80))return 8;
+        availability.Submit(2,L"nihao");
+        if(!WaitReply(availability,2,false))return 18;
     }
     {
         Child c;if(!c.start(exe,argv[2],argv[3],argv[4])||!Ready(client))return 9;
+        if(!WaitAvailability(availability,true,3000))return 19;
+        availability.Stop();
         SetEvent(c.stop);
         if(WaitForSingleObject(c.process,10000)!=WAIT_OBJECT_0)return 10;
         DWORD code=1;GetExitCodeProcess(c.process,&code);if(code!=0)return 11;

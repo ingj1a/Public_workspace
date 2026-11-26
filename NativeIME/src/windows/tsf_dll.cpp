@@ -165,6 +165,14 @@ public:
         // Test callback is read-only: never advance composition twice.
         if (Eligible(context) && (!composition_ || (context == context_ && GetFocus()==compositionFocus_))) {
             auto event = Translate(key);
+            // When the engine has not proved readiness, do not start owning
+            // typing. A retry contains a fixed probe, never the user's key.
+            if(!composition_&&!engine_->Ready()){
+                if(event.key==Key::Letter&&!event.shortcut){
+                    try{engine_->RequestProbe();}catch(...){}
+                }
+                return S_OK;
+            }
             *eaten = Wants(event);
         }
 #else
@@ -182,6 +190,11 @@ public:
                 return S_OK;
             }
             auto event = Translate(key);
+            if(!composition_&&!engine_->Ready()){
+                if(event.key==Key::Letter&&!event.shortcut)engine_->RequestProbe();
+                return S_OK;
+            }
+            if(!popup_.Visible())session_.ClearCandidates();
             if (!Wants(event)) {
                 FinishRaw();
                 return S_OK;
@@ -204,7 +217,7 @@ public:
                     if(!popup_.Show(GetFocus(),anchor_,session_))session_.ClearCandidates();
                 }else{popup_.Hide();session_.ClearCandidates();}
             } else { InvalidateQuery();session_.ClearCandidates();popup_.Hide();FinishRaw(); }
-        } catch (...) { popup_.Hide(); /* Never allow a C++ exception to escape a COM callback. */ }
+        } catch (...) { session_.ClearCandidates();popup_.Hide(); /* Never allow a C++ exception to escape a COM callback. */ }
 #else
         (void)context; (void)key;
 #endif
@@ -283,7 +296,7 @@ private:
             anchorValid_=nativeime::win::ReadNativeEditCaret(compositionFocus_,fresh);
             if(anchorValid_)anchor_=fresh;
             if(!anchorValid_||focusCookie_==TF_INVALID_COOKIE||blocked_||!popup_.Show(compositionFocus_,anchor_,session_))session_.ClearCandidates();
-        }catch(...){popup_.Hide();}
+        }catch(...){session_.ClearCandidates();popup_.Hide();}
     }
     HWND compositionFocus_=nullptr;
     ITfComposition* composition_ = nullptr;
