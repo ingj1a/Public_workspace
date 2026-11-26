@@ -8,7 +8,7 @@
 #include <optional>
 namespace nativeime::win {
 constexpr UINT EngineReady=WM_APP+71;
-struct EngineReply { unsigned long long generation; std::wstring input; core::ipc::Response response; };
+struct EngineReply { unsigned long long generation; std::wstring input; core::ipc::Response response; ULONGLONG submitted=0; };
 // One in-flight request and one latest pending request. Readiness is established
 // by a fixed non-user-data query on the worker, never by blocking a TSF callback.
 class AsyncEngine {
@@ -24,7 +24,7 @@ public:
         cv_.notify_one();
     }
     void Submit(unsigned long long generation,const std::wstring& input){
-        {std::lock_guard<std::mutex> lock(mutex_);if(stopping_)return;pending_=EngineReply{generation,input,{}};}
+        {std::lock_guard<std::mutex> lock(mutex_);if(stopping_)return;pending_=EngineReply{generation,input,{},GetTickCount64()};}
         cv_.notify_one();
     }
     void Cancel(){std::lock_guard<std::mutex> lock(mutex_);pending_.reset();reply_.reset();}
@@ -51,8 +51,7 @@ private:
             }
             const auto start=GetTickCount64();
             const bool ok=client_.Query(work->input,work->response,80);
-            diagnostics.Record(ok?diag::Event::IpcOk:diag::Event::IpcFailure);
-            diagnostics.Record(diag::Event::IpcMilliseconds,GetTickCount64()-start);
+            diagnostics.RecordIpc(ok,GetTickCount64()-start);
             ready_.store(ok,std::memory_order_release);
             if(!ok)work->response={};
             {std::lock_guard<std::mutex> lock(mutex_);if(stopping_)return;reply_=std::move(work);}

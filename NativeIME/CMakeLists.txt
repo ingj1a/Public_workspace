@@ -39,6 +39,9 @@ if(MSVC)
 endif()
 
 add_test(NAME nativeime_core_tests COMMAND nativeime_core_tests)
+add_executable(nativeime_zip_store_tests tests/zip_store_tests.cpp)
+target_link_libraries(nativeime_zip_store_tests PRIVATE nativeime_core)
+add_test(NAME nativeime_zip_store_tests COMMAND nativeime_zip_store_tests "${CMAKE_BINARY_DIR}/diagnostic-fixture.zip")
 
 add_test(NAME nativeime_session_tests COMMAND nativeime_session_tests)
 

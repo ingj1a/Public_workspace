@@ -13,6 +13,7 @@
 #include "tsf_popup.hpp"
 #include "async_engine.hpp"
 #include "diagnostics.hpp"
+#include "core/mode_switch.hpp"
 #include "pipe_security.hpp"
 #include <memory>
 #include <textstor.h>
@@ -100,6 +101,7 @@ public:
         StopEngine();
         popup_.Destroy();
         FinishRaw();
+        if(!composition_)session_.SetChinese(true);
         if(threadManager_&&focusCookie_!=TF_INVALID_COOKIE){
             ITfSource* source=nullptr;
             if(SUCCEEDED(threadManager_->QueryInterface(IID_PPV_ARGS(&source)))){
@@ -163,6 +165,8 @@ public:
         if (!eaten) return E_POINTER;
         *eaten = FALSE;
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
+        // Explicit experimental mode shortcut, only when no composition is active.
+        if(IsModeChord(key)){*eaten=CanToggle(context);return S_OK;}
         // Test callback is read-only: never advance composition twice.
         if (Eligible(context) && (!composition_ || (context == context_ && GetFocus()==compositionFocus_))) {
             auto event = Translate(key);
@@ -181,11 +185,21 @@ public:
 #endif
         return S_OK;
     }
-    STDMETHODIMP OnKeyDown(ITfContext* context, WPARAM key, LPARAM, BOOL* eaten) override {
+    STDMETHODIMP OnKeyDown(ITfContext* context, WPARAM key, LPARAM keyData, BOOL* eaten) override {
         if (!eaten) return E_POINTER;
         *eaten = FALSE;
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         try {
+            if(IsModeChord(key)){
+                if(CanToggle(context)){
+                    *eaten=TRUE;
+                    if(!(static_cast<ULONG_PTR>(keyData)&(1ull<<30))){
+                        InvalidateQuery();popup_.Hide();session_.SetChinese(!session_.Chinese());
+                        diagnostics_.Record(session_.Chinese()?nativeime::win::diag::Event::ModeToChinese:nativeime::win::diag::Event::ModeToEnglish);
+                    }
+                }
+                return S_OK;
+            }
             if (!Eligible(context) || (composition_ && (context != context_ || GetFocus()!=compositionFocus_))) {
                 FinishRaw();
                 return S_OK;
@@ -304,7 +318,7 @@ private:
             if(anchorValid_)anchor_=fresh;
             if(!anchorValid_||focusCookie_==TF_INVALID_COOKIE||blocked_||!popup_.Show(compositionFocus_,anchor_,session_)){
                 diagnostics_.Record(nativeime::win::diag::Event::CandidateUnavailable);session_.ClearCandidates();
-            }else diagnostics_.Record(nativeime::win::diag::Event::CandidateShown);
+            }else diagnostics_.RecordCandidateLatency(GetTickCount64()-reply->submitted);
         }catch(...){session_.ClearCandidates();popup_.Hide();}
     }
     HWND compositionFocus_=nullptr;
@@ -320,15 +334,31 @@ private:
     // Deliberate allow-list for this engineering candidate: only a standard
     // focused Win32 EDIT control, in this process, not password/read-only.
     // Unknown custom controls and secure contexts pass through.
-    bool Eligible(ITfContext* context) const noexcept {
-        if (!context || !threadManager_ || secure_ || blocked_ || !engine_) return false;
-        const auto snapshot=nativeime::win::InspectFocus(GetFocus(),app_);
-        if(!snapshot.writableEdit)return false;
-        const auto policy=nativeime::core::ResolveApp(snapshot.app,snapshot.focus,
-            nativeime::core::Override::Auto,nativeime::core::Mode::Chinese);
-        if(policy.mode!=nativeime::core::Mode::Chinese)return false;
+    bool SupportedContext(ITfContext* context) const noexcept {
+        if(!context||!threadManager_||secure_||blocked_)return false;
+        auto focus=nativeime::win::InspectFocus(GetFocus(),app_);
+        if(!focus.writableEdit)return false;
         TF_STATUS status{};
-        return SUCCEEDED(context->GetStatus(&status)) && !(status.dwDynamicFlags & TF_SD_READONLY);
+        return SUCCEEDED(context->GetStatus(&status))&&!(status.dwDynamicFlags&TF_SD_READONLY);
+    }
+    bool Eligible(ITfContext* context) const noexcept {
+        if(!engine_||!session_.Chinese()||!SupportedContext(context))return false;
+        const auto snapshot=nativeime::win::InspectFocus(GetFocus(),app_);
+        return nativeime::core::ResolveApp(snapshot.app,snapshot.focus,
+            nativeime::core::Override::Auto,nativeime::core::Mode::Chinese).mode==nativeime::core::Mode::Chinese;
+    }
+    bool CanToggle(ITfContext* context) const noexcept {
+        if(!nativeime::core::CanSwitchMode(SupportedContext(context),composition_!=nullptr||!session_.Preedit().empty()))return false;
+        ITfDocumentMgr* doc=nullptr;ITfContext* top=nullptr;
+        const bool current=SUCCEEDED(threadManager_->GetFocus(&doc))&&doc&&SUCCEEDED(doc->GetTop(&top))&&top==context;
+        if(top)top->Release();if(doc)doc->Release();
+        return current;
+    }
+    static bool IsModeChord(WPARAM key) noexcept {
+        using namespace nativeime::core;
+        return IsModeSwitchChord(key==VK_F12,(GetKeyState(VK_CONTROL)&0x8000)!=0,
+            (GetKeyState(VK_SHIFT)&0x8000)!=0,(GetKeyState(VK_MENU)&0x8000)!=0,
+            ((GetKeyState(VK_LWIN)|GetKeyState(VK_RWIN))&0x8000)!=0);
     }
     static KeyEvent Translate(WPARAM key) noexcept {
         if ((GetKeyState(VK_CONTROL)&0x8000)||(GetKeyState(VK_MENU)&0x8000)||

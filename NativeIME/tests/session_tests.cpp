@@ -1,4 +1,5 @@
 #include "core/input_session.hpp"
+#include "core/mode_switch.hpp"
 #include <iostream>
 #include <cstdlib>
 using namespace nativeime::core;
@@ -10,6 +11,9 @@ void type(InputSession& s, const wchar_t* text) {
     for (; *text; ++text) check(s.Handle({Key::Letter, *text}).consumed, "letter consumed");
 }
 int main() {
+    check(IsModeSwitchChord(true,true,true,false,false),"mode chord");
+    check(!IsModeSwitchChord(true,true,false,false,false)&&!IsModeSwitchChord(true,true,true,true,false)&&!IsModeSwitchChord(true,true,true,false,true)&&!IsModeSwitchChord(false,true,true,false,false),"other shortcuts pass through");
+    check(CanSwitchMode(true,false)&&!CanSwitchMode(false,false)&&!CanSwitchMode(true,true),"mode switch only idle supported context");
     InputSession s;
     check(!s.Handle({Key::Space}).consumed, "idle space passes");
     check(!s.Handle({Key::Backspace}).consumed, "idle backspace passes");

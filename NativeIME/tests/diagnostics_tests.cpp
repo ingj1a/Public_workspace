@@ -6,7 +6,8 @@ int main(){
     if(!c.Start())return 1;
     Capture other;if(other.Start())return 2;
     w.Record(Event::Composition);w.Record(Event::IpcMilliseconds,12);
-    auto a=c.Read();if(a[1]!=1||a[10]!=12)return 3;
+    w.RecordIpc(true,18);w.RecordCandidateLatency(9);w.RecordCandidateLatency(30);w.RecordCandidateLatency(151);
+    auto a=c.Read();if(a[1]!=1||a[10]!=30||a[8]!=1||a[5]!=3||a[12]!=3||a[13]!=190||a[14]!=1||a[16]!=1||a[20]!=1)return 3;
     if(!c.Stop())return 4;
     w.Record(Event::Commit);
     if(c.Read()[2]!=0)return 5;

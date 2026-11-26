@@ -97,6 +97,8 @@ jobs:
         run: cmake --build NativeIME/build --config Release --parallel
       - name: Test
         run: ctest --test-dir NativeIME/build -C Release --output-on-failure
+      - name: Verify diagnostic ZIP with independent standard-library reader
+        run: python -c "import zipfile,json; z=zipfile.ZipFile('NativeIME/build/diagnostic-fixture.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; assert json.loads(z.read('summary.json'))['schema']==2"
       - name: Upload native input lab (not an installer)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
