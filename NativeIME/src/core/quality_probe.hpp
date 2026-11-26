@@ -12,7 +12,7 @@ inline constexpr QualityCase ExactCases[]={
 inline constexpr std::wstring_view NegativeCases[]={L"qwerty",L"zzzzzz",L"nihao"};
 struct QualityResult {
     unsigned exactTotal=0,exactHits=0,correctionTotal=0,correctionHits=0,
-        negativeTotal=0,negativePass=0,queryFailures=0;
+        negativeTotal=0,negativePass=0,queryFailures=0,correctionMissMask=0;
     bool Passed()const noexcept {
         return exactTotal&&correctionTotal&&negativeTotal&&!queryFailures&&
             exactHits==exactTotal&&correctionHits==correctionTotal&&negativePass==negativeTotal;
@@ -28,7 +28,7 @@ template<class Query> QualityResult RunQualityProbe(Query query){
         return std::any_of(candidates.begin(),candidates.end(),[&](const auto& c){return c.text==expected;});
     };
     for(const auto& c:ExactCases){++r.exactTotal;if(check(c.pinyin,c.expected,false))++r.exactHits;}
-    for(const auto& c:CorrectionRules){++r.correctionTotal;if(check(c.typo,c.expected,false))++r.correctionHits;}
+    for(const auto& c:CorrectionRules){++r.correctionTotal;if(check(c.typo,c.expected,false))++r.correctionHits;else if(r.correctionTotal<=32)r.correctionMissMask|=1u<<(r.correctionTotal-1);}
     for(auto p:NegativeCases){++r.negativeTotal;if(check(p,L"",true))++r.negativePass;}
     return r;
 }

@@ -30,8 +30,13 @@ int main(int argc,char** argv){
         const auto quality=nativeime::core::RunQualityProbe([&](const std::wstring& p,std::vector<nativeime::core::Candidate>& candidates){candidates=rime.Query(p).candidates;return true;});
         std::cout<<"Fixed quality probe: exact "<<quality.exactHits<<"/"<<quality.exactTotal
                  <<", correction "<<quality.correctionHits<<"/"<<quality.correctionTotal
-                 <<", negative "<<quality.negativePass<<"/"<<quality.negativeTotal<<"\n";
+                 <<", negative "<<quality.negativePass<<"/"<<quality.negativeTotal<<", correction miss bitmask "<<quality.correctionMissMask<<"\n";
         if(!quality.Passed())return 6;
+        // Observe real full-phrase candidates separately; dictionary coverage is
+        // not replaced by a synthetic sentence table.
+        auto sentence=rime.Query(L"wojintianhenkaixin");
+        bool full=false;for(const auto& c:sentence.candidates)if(c.text==L"我今天很开心")full=true;
+        std::cout<<"Sentence example hit (observational): "<<full<<"\n";
         std::cout<<"Real Rime candidate + session smoke passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 4;}
 }

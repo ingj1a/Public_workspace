@@ -1,6 +1,8 @@
 #include "core/rime_provider.hpp"
 #include "core/professional_lexicon.hpp"
 #include "core/pinyin_correction.hpp"
+#include "core/common_lexicon.hpp"
+#include "core/sentence_preview.hpp"
 #include <cstring>
 #include <filesystem>
 #include <rime_api.h>
@@ -75,7 +77,7 @@ RimeProvider::RimeProvider(std::string shared,std::string user,std::string schem
     p.api->set_option(p.session,"zh_hans",True);
 }
 RimeProvider::~RimeProvider()=default;
-QueryResult RimeProvider::QueryExact(const std::wstring& input){
+QueryResult RimeProvider::QueryExact(const std::wstring& input,const std::wstring& target){
     QueryResult out; out.normalized_input=PinyinEngine::Normalize(input);
     if(out.normalized_input.empty()||out.normalized_input.size()>64) return out;
     auto& p=*impl_; auto* api=p.api;
@@ -98,8 +100,26 @@ QueryResult RimeProvider::QueryExact(const std::wstring& input){
                     if(c.text && *c.text) out.candidates.push_back({Wide(c.text),100-i,Wide(c.comment)});
                 }
             }
+            if(target.empty()&&ctx.commit_text_preview)AddSentencePreview(out,Wide(ctx.commit_text_preview));
         }catch(...){api->free_context(&ctx);api->clear_composition(p.session);throw;}
         api->free_context(&ctx);
+    }
+    // Windows and Linux dictionaries can place a verified exact match on
+    // different pages. Search at most 48 entries ONLY on correction verification.
+    if(!target.empty()&&!std::any_of(out.candidates.begin(),out.candidates.end(),[&](const auto& c){return c.text==target;})&&
+       RIME_API_AVAILABLE(api,candidate_list_begin)&&RIME_API_AVAILABLE(api,candidate_list_next)&&RIME_API_AVAILABLE(api,candidate_list_end)){
+        RimeCandidateListIterator iter{};
+        if(api->candidate_list_begin(p.session,&iter)){
+            try{
+                for(unsigned i=0;i<48&&api->candidate_list_next(&iter);++i){
+                    if(iter.candidate.text&&Wide(iter.candidate.text)==target){
+                        if(out.candidates.size()>=9)out.candidates.pop_back();
+                        out.candidates.push_back({target,80,Wide(iter.candidate.comment)});break;
+                    }
+                }
+            }catch(...){api->candidate_list_end(&iter);api->clear_composition(p.session);throw;}
+            api->candidate_list_end(&iter);
+        }
     }
     api->clear_composition(p.session);
     return out;
@@ -108,13 +128,15 @@ QueryResult RimeProvider::Query(const std::wstring& input){
     auto out=QueryExact(input);
     if(out.normalized_input.empty()||out.normalized_input.size()>64)return out;
     AddProfessionalCandidate(out);
+    AddCommonCandidate(out);
     if(const auto* rule=FindCorrection(out.normalized_input)){
         // At most one extra real lookup, only for reviewed typo spellings.
         // A native Rime match is left in place; do not query again unnecessarily.
         if(!std::any_of(out.candidates.begin(),out.candidates.end(),[&](const auto& c){return c.text==rule->expected;})){
-            auto verified=QueryExact(std::wstring(rule->spelling));
+            auto verified=QueryExact(std::wstring(rule->spelling),std::wstring(rule->expected));
             // The curated professional vocabulary is part of the engine's exact lookup.
             AddProfessionalCandidate(verified);
+            AddCommonCandidate(verified);
             AddCorrection(out,*rule,verified);
         }
     }

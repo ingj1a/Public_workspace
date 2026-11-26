@@ -14,7 +14,7 @@ public:
     RimeProvider& operator=(const RimeProvider&)=delete;
     QueryResult Query(const std::wstring& input);
 private:
-    QueryResult QueryExact(const std::wstring& input);
+    QueryResult QueryExact(const std::wstring& input,const std::wstring& target = {});
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

@@ -148,9 +148,15 @@ std::string Report(){
        <<",\"desktop_preflight\":"<<preflightResult<<",\"tsf_desktop\":"<<desktopResult
        <<"},\n  \"fixed_quality_probe\":{\"exact_hits\":"<<qualityResult.exactHits<<",\"exact_total\":"<<qualityResult.exactTotal
        <<",\"correction_hits\":"<<qualityResult.correctionHits<<",\"correction_total\":"<<qualityResult.correctionTotal
-       <<",\"negative_pass\":"<<qualityResult.negativePass<<",\"negative_total\":"<<qualityResult.negativeTotal<<",\"query_failures\":"<<qualityResult.queryFailures
+       <<",\"negative_pass\":"<<qualityResult.negativePass<<",\"negative_total\":"<<qualityResult.negativeTotal<<",\"query_failures\":"<<qualityResult.queryFailures<<",\"correction_miss_mask\":"<<qualityResult.correctionMissMask
        <<"},\n  \"notes\":\"-1 not run; 0 pass; 77 blocked; other codes fail. Candidate latency measures submission to popup Show success, not compositor paint. Engine job CPU includes owned session, supervisor and engine descendants; peak commit is not working set. Blank samples unavailable. Host TSF resource usage excluded. No user text collected.\"\n}\n";
     return out.str();
+}
+bool WriteReport(const std::filesystem::path& path){
+    const auto zip=nativeime::core::StoreZip({{"summary.json",Report()},{"performance.csv",PerformanceCsv()}});
+    std::ofstream file(path,std::ios::binary|std::ios::trunc);
+    file.write(zip.data(),static_cast<std::streamsize>(zip.size()));file.close();
+    return static_cast<bool>(file);
 }
 void Save(){
     if(capture.Active()||!capture.Stop())return;
@@ -161,10 +167,7 @@ void Save(){
     ofn.lpstrFile=path;ofn.nMaxFile=MAX_PATH;ofn.lpstrDefExt=L"zip";ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&ofn))return;
     try{
-        const auto summary=Report(),perf=PerformanceCsv();
-        const auto zip=nativeime::core::StoreZip({{"summary.json",summary},{"performance.csv",perf}});
-        std::ofstream file(std::filesystem::path(path),std::ios::binary|std::ios::trunc);
-        file.write(zip.data(),static_cast<std::streamsize>(zip.size()));file.close();
+        const bool file=WriteReport(path);
         MessageBoxW(root,file?L"已导出脱敏 ZIP 报告。包含摘要与性能采样，请检查后再分享。":L"报告保存失败。",L"NativeIME",MB_OK|(file?MB_ICONINFORMATION:MB_ICONERROR));
     }catch(...){MessageBoxW(root,L"报告生成失败。",L"NativeIME",MB_OK|MB_ICONERROR);}
 }
@@ -226,6 +229,15 @@ HWND CreateDiagnosticsPage(HWND parent,HINSTANCE instance){
 }
 void SetDiagnosticsEngineJob(HANDLE job) noexcept {
     engineJob=job;previousJobCpu.reset();previousJobTick=0;
+}
+bool WriteDiagnosticsSmokeReport() noexcept {
+    // Explicit CI mode uses the production serializer with empty capture.
+    // Refuse to overwrite an existing file.
+    try{
+        const auto path=std::filesystem::current_path()/L"nativeime-report-smoke.zip";
+        if(std::filesystem::exists(path))return false;
+        return WriteReport(path);
+    }catch(...){return false;}
 }
 bool CloseDiagnosticsPage() noexcept {
     if(verifier||probe.valid())return false;

@@ -11,7 +11,7 @@ namespace {
 using namespace nativeime::win;
 enum {Home=201,Diagnostics,StartEngine,StopEngine};
 HWND root=nullptr,home=nullptr,diag=nullptr,homeNav=nullptr,diagNav=nullptr;
-HWND engineState=nullptr,startButton=nullptr,stopButton=nullptr;
+HWND engineState=nullptr,startButton=nullptr,stopButton=nullptr,testEdit=nullptr;
 HANDLE session=nullptr,stopEvent=nullptr,job=nullptr;
 bool stopping=false;
 DWORD lastExit=0;
@@ -116,7 +116,9 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             stopButton=Control(home,L"BUTTON",L"停止引擎",BS_PUSHBUTTON|WS_TABSTOP,StopEngine,174,180,140,34);
             Control(home,L"STATIC",L"实验中英文切换：Ctrl + Shift + F12（仅普通文本框且无组合输入）。\r\n诊断与测试内置，采集默认关闭。",0,0,24,246,630,50);
             Control(home,L"STATIC",L"本构建不自动注册输入法、不修改默认输入法、不添加开机启动项。仅限隔离测试环境。",0,0,24,310,630,60);
-            if(!engineState||!startButton||!stopButton)return -1;
+            Control(home,L"STATIC",L"原生输入测试区（不会写入诊断报告）",0,0,24,372,630,24);
+            testEdit=Control(home,L"EDIT",L"",WS_BORDER|WS_TABSTOP|ES_AUTOHSCROLL,0,24,402,620,32);
+            if(!engineState||!startButton||!stopButton||!testEdit)return -1;
             SetTimer(h,1,250,nullptr);ShowPage(false);Refresh();return 0;
         }
         case WM_COMMAND:
@@ -141,6 +143,8 @@ bool PageVisible(HWND h){return (GetWindowLongPtrW(h,GWL_STYLE)&WS_VISIBLE)!=0;}
 }
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR cmd,int show){
     const bool smoke=cmd&&wcscmp(cmd,L"--ui-smoke")==0;
+    const bool report=cmd&&wcscmp(cmd,L"--report-smoke")==0;
+    if(report)return WriteDiagnosticsSmokeReport()?0:5;
     WNDCLASSW wc{};wc.lpfnWndProc=Proc;wc.hInstance=instance;wc.lpszClassName=L"NativeIME.Main";
     wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=GetSysColorBrush(COLOR_WINDOW);
     if(!RegisterClassW(&wc))return 1;
@@ -151,7 +155,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR cmd,int show){
         // No engine launch, registration or visible desktop needed. Verify actual
         // child ownership and page navigation, not merely executable presence.
         DWORD pid=0;GetWindowThreadProcessId(diag,&pid);
-        bool ok=GetParent(diag)==h&&pid==GetCurrentProcessId()&&PageVisible(home)&&!PageVisible(diag);
+        bool ok=GetParent(diag)==h&&pid==GetCurrentProcessId()&&PageVisible(home)&&!PageVisible(diag)&&GetParent(testEdit)==home;
         SendMessageW(h,WM_COMMAND,Diagnostics,0);ok=ok&&PageVisible(diag)&&!PageVisible(home);
         SendMessageW(h,WM_COMMAND,Home,0);ok=ok&&PageVisible(home)&&!PageVisible(diag)&&CloseDiagnosticsPage();
         DestroyWindow(h);return ok?0:4;
