@@ -86,7 +86,7 @@
       "id": "TEST-TSF-EXP",
       "status": "PASS",
       "scope": "Experimental build and COM smoke only; live E2E NOT_RUN",
-      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45584432367"
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
     },
     {
       "id": "TEST-RIME",
@@ -106,19 +106,27 @@
     },
     {
       "id": "TEST-FOCUS-WIN",
-      "status": "NOT_RUN",
-      "scope": "Native Win32 edit/password/read-only/disabled/unknown control tests, not third-party app focus coverage."
+      "status": "PASS",
+      "scope": "Native Win32 edit/password/read-only/disabled/unknown control tests, not third-party app focus coverage.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
     },
     {
       "id": "TEST-IPC-001",
-      "status": "NOT_RUN",
-      "scope": "Versioned bounded IPC frame round-trip, malformed frame rejection; CI pending."
+      "status": "PASS",
+      "scope": "Versioned bounded IPC frame round-trip, malformed frame rejection; CI pending.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
     },
     {
       "id": "TEST-IPC-TSF",
+      "status": "PARTIAL",
+      "scope": "Compile and portable session contracts passed; live TSF E2E NOT_RUN.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
+    },
+    {
+      "id": "TEST-IPC-E2E",
       "status": "NOT_RUN",
-      "scope": "Async TSF candidate delivery and raw fallback; live E2E and security review pending."
+      "scope": "Real service child process, peer executable identity, malformed request, disconnect, restart, graceful stop, stalled read; Windows CI pending."
     }
   ],
-  "evidenceLevel": "Previous native and Rime baseline passed; new IPC and TSF async path pending CI and live E2E."
+  "evidenceLevel": "L2 at 3f79989; new process integration tests pending. Interactive TSF registration and E2E not run."
 }
