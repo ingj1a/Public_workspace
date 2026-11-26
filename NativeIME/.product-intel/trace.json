@@ -12,7 +12,9 @@
       "tests": [
         "TEST-TSF-001"
       ],
-      "evidence": []
+      "evidence": [
+        "https://github.com/ingj1a/Public_workspace/actions/runs/45741739491/job/139648142925"
+      ]
     },
     {
       "id": "REQ-002",
@@ -76,12 +78,17 @@
       "flow": "FLOW-001",
       "modules": [
         "windows-tsf",
-        "engine-ipc"
+        "engine-ipc",
+        "engine-supervisor"
       ],
       "tests": [
-        "TEST-TSF-005"
+        "TEST-TSF-005",
+        "TEST-IPC-E2E",
+        "TEST-SUPERVISOR"
       ],
-      "evidence": []
+      "evidence": [
+        "https://github.com/ingj1a/Public_workspace/actions/runs/45739769886/job/139641707741"
+      ]
     },
     {
       "id": "REQ-007",

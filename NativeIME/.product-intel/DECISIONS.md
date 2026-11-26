@@ -35,3 +35,10 @@
 - Status: Accepted
 - Reason: Validate bounded session state and candidate actions without modifying Windows registration or capturing keys outside the lab.
 - Consequence: The existing TSF probe remains pass-through; the lab is a native Win32 EXE, not an installer. COM smoke tests exercise exports and direct object lifetime, not interactive activation. Unknown Pinyin is preserved as raw text on commit; switching language cancels an uncommitted preview. The five-entry fixture is not a real dictionary. GUI review and full TSF edit sessions remain release blockers.
+
+## DEC-007 — Beta transition: close the actual lifecycle and desktop evidence gap
+- Mode: HARDEN / FOCUSED, PDI 2.0.0-beta.1 (manual protocols; scripts NOT_CHECKED). Existing repository has prior formal PDI history, not a clean A/B comparison.
+- Baseline: aca9e2b, Windows registration and prior integration passed. No live desktop activation evidence.
+- Alternatives: direct per-host spawning (rejected for duplicate process and input callback risk), explicit per-session supervisor with bounded restart (selected), Windows service (rejected for privilege and installation expansion).
+- Falsifier: verified child crash does not produce a new engine returning real candidates, or shutdown leaves a child alive. Test uses only descendants of its own Job object.
+- Desktop test artifact contains first-party binaries only; no automatic registration/default change or third-party distribution. No visual rating until actual screenshot. Windows release only; Linux auxiliary validation preserved.

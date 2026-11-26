@@ -126,6 +126,24 @@ jobs:
           name: NativeIME-DesktopLab-windows-x64
           path: NativeIME/build/Release/NativeIME.DesktopLab.exe
           if-no-files-found: error
+      - name: Stage first-party experimental desktop binaries (not an installer)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = "NativeIME/desktop-candidate"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item "NativeIME/build-experimental/Release/NativeIME.TSF.dll" $dest
+          Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineService.exe" $dest
+          Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineSupervisor.exe" $dest
+          Copy-Item "NativeIME/build/Release/NativeIME.DesktopLab.exe" $dest
+          Copy-Item "NativeIME/tests/DESKTOP-ACCEPTANCE.md" $dest
+      - name: Upload first-party experimental desktop candidate
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeIME-DesktopCandidate-windows-x64
+          path: NativeIME/desktop-candidate/
+          if-no-files-found: error
   real-rime:
     runs-on: ubuntu-24.04
     steps:

@@ -6,8 +6,8 @@
     {
       "id": "REQ-001",
       "priority": "P0",
-      "status": "NOT_RUN",
-      "note": "Default TSF probe compiled and COM smoke passed in run 45583478649; runtime registration pending."
+      "status": "PARTIAL",
+      "note": "Windows registration and removal passed; actual profile activation remains unverified."
     },
     {
       "id": "REQ-002",
@@ -53,8 +53,9 @@
     },
     {
       "id": "TEST-TSF-001",
-      "status": "NOT_RUN",
-      "scope": "Disposable CI registration/profile lookup/COM creation/removal test added, not run; interactive activation not tested."
+      "status": "PARTIAL",
+      "scope": "Actual disposable CI COM/TSF profile registration, profile description, CoCreateInstance and removal PASS; profile activation and physical keyboard E2E NOT_RUN.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45741739491/job/139648142925"
     },
     {
       "id": "TEST-TSF-002",
@@ -136,9 +137,10 @@
     },
     {
       "id": "TEST-SUPERVISOR",
-      "status": "NOT_RUN",
-      "scope": "Explicit native supervisor with child job, inherited stop event and bounded restart; compile/runtime pending."
+      "status": "PARTIAL",
+      "scope": "Supervisor builds at aca9e2b; new actual auto-restart/clean stop test pending CI.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45741739491/job/139648142925"
     }
   ],
-  "evidenceLevel": "L2 at 109cb98 for native control and IPC; actual TSF keyboard/profile activation NOT_RUN; new registration test and supervisor pending."
+  "evidenceLevel": "L2 at aca9e2b: registration/remove and previous Rime/IPC/native control tests pass; automatic supervisor restart added, pending. Actual profile activation, real typing and visual quality NOT_RUN."
 }

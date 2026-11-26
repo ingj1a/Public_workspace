@@ -86,8 +86,50 @@ bool NativeControlIntegration(const std::wstring& exe){
     if(ok)std::cout<<"Real Rime async candidate, native popup and Win32 EDIT insertion passed (not TSF edit session)\n";
     return ok;
 }
+// Identify only a service belonging to the disposable test's own Job object.
+HANDLE OwnedService(const Child& supervisor,DWORD& pid){
+    pid=0;
+    const auto name=win::PipeName(win::LogonSid());
+    if(!WaitNamedPipeW(name.c_str(),1000))return nullptr;
+    HANDLE pipe=CreateFileW(name.c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_EXISTING,
+        FILE_FLAG_OVERLAPPED|SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION,nullptr);
+    if(pipe==INVALID_HANDLE_VALUE)return nullptr;
+    ULONG actual=0;
+    const BOOL identified=GetNamedPipeServerProcessId(pipe,&actual);
+    CloseHandle(pipe);
+    if(!identified||!actual)return nullptr;
+    HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION|SYNCHRONIZE|PROCESS_TERMINATE,FALSE,actual);
+    if(!process)return nullptr;
+    BOOL owned=FALSE;
+    if(!IsProcessInJob(process,supervisor.job,&owned)||!owned){CloseHandle(process);return nullptr;}
+    pid=actual;return process;
+}
+bool SupervisorIntegration(const std::wstring& exe,const std::wstring& supervisor,const std::wstring& shared,
+                           const std::wstring& user,const std::wstring& dll){
+    win::EngineClient client(exe);
+    Child c;
+    if(!c.start(supervisor,shared,user,dll)||!Ready(client))return false;
+    DWORD original=0;
+    HANDLE first=OwnedService(c,original);
+    if(!first)return false;
+    // Terminate only the verified descendant of this test process.
+    bool killed=TerminateProcess(first,42)&&WaitForSingleObject(first,5000)==WAIT_OBJECT_0;
+    CloseHandle(first);
+    if(!killed||!Ready(client))return false;
+    DWORD replacement=0;
+    HANDLE second=OwnedService(c,replacement);
+    if(!second)return false;
+    bool ok=replacement!=original&&SetEvent(c.stop)&&WaitForSingleObject(c.process,15000)==WAIT_OBJECT_0;
+    DWORD status=1;
+    ok=ok&&GetExitCodeProcess(c.process,&status)&&status==0&&WaitForSingleObject(second,5000)==WAIT_OBJECT_0;
+    CloseHandle(second);
+    core::ipc::Response r;
+    ok=ok&&!client.Query(L"nihao",r,80);
+    if(ok)std::cout<<"Supervisor: real service restarted automatically and both processes stopped cleanly\n";
+    return ok;
+}
 int wmain(int argc,wchar_t** argv){
-    if(argc!=5)return 1;
+    if(argc!=6)return 1;
     const std::wstring exe=std::filesystem::absolute(argv[1]).wstring();
     win::EngineClient client(exe);core::ipc::Response r;
     if(client.Query(L"nihao",r,80)){std::cerr<<"Unexpected existing service\n";return 2;}
@@ -124,5 +166,6 @@ int wmain(int argc,wchar_t** argv){
     stalled.join();
     if(ok||elapsed>400)return 13;
     std::cout<<"Real librime IPC, identity rejection, malformed request, crash, restart, stop and stalled read passed\n";
+    if(!SupervisorIntegration(exe,std::filesystem::absolute(argv[5]).wstring(),argv[2],argv[3],argv[4]))return 15;
     return 0;
 }
