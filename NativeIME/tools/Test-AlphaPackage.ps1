@@ -27,7 +27,7 @@ foreach($item in $manifest.sources){
        $item.sha256 -notmatch '^[A-Fa-f0-9]{64}$' -or $sourceSeen.ContainsKey($item.name)){throw "Invalid pinned source: $($item.name)"}
     $sourceSeen[$item.name]=$true
 }
-foreach($required in @('Prepare-Alpha.ps1','Install-Alpha.ps1','Alpha-Components.ps1','ALPHA-LAB.md','DESKTOP-ACCEPTANCE.md','DIAGNOSTICS.md')){
+foreach($required in @('Prepare-Alpha.ps1','Install-Alpha.ps1','Alpha-Components.ps1','Test-AlphaPackage.ps1','ALPHA-LAB.md','DESKTOP-ACCEPTANCE.md','DIAGNOSTICS.md')){
     if(-not (Test-Path -LiteralPath (Join-Path $root $required) -PathType Leaf)){throw "Missing package entry point or documentation: $required"}
 }
 $firstPartyNames=@($manifest.firstParty | ForEach-Object {$_.name})
@@ -60,7 +60,8 @@ foreach($dir in @('runtime','shared','upstream-notices')){
     if(-not (Test-Path -LiteralPath (Join-Path $root $dir) -PathType Container)){throw "Missing prepared directory: $dir"}
 }
 foreach($required in @('runtime/rime.dll','shared/luna_pinyin.schema.yaml','shared/essay.txt','shared/opencc')){
-    if(-not (Test-Path -LiteralPath (Join-Path $root ($required.Replace('/','\')))){throw "Missing prepared runtime/data: $required"}
+    $requiredPath=Join-Path $root ($required.Replace('/','\'))
+    if(-not (Test-Path -LiteralPath $requiredPath)){throw "Missing prepared runtime/data: $required"}
 }
 $actual=@(foreach($dir in @('runtime','shared','upstream-notices')){
     Get-ChildItem -LiteralPath (Join-Path $root $dir) -File -Recurse | ForEach-Object {$_.FullName.Substring($root.Length+1).Replace('\','/')}

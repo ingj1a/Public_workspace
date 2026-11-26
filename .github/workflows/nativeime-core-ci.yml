@@ -1,7 +1,10 @@
 name: NativeIME Core CI
 
 on:
+  # Feature branches use their PR build, not a second identical push build.
+  # Manual dispatch remains available for branches without an open PR.
   push:
+    branches: [main, master]
     paths:
       - "NativeIME/**"
       - ".github/workflows/nativeime-core-ci.yml"
@@ -21,6 +24,7 @@ concurrency:
 jobs:
   build-test:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -177,8 +181,8 @@ jobs:
           # Registration, process-scoped activation, input and rollback run only
           # in this disposable Windows runner; no default profile is changed.
           try {
+            # The PowerShell script throws on failure; it is not a native command.
             & "$lab/Install-Alpha.ps1" -Action Install -IsolatedVm
-            if ($LASTEXITCODE -ne 0) { throw "Alpha registration failed: $LASTEXITCODE" }
             # Do not download a language capability or change the default input method.
             # Only the explicitly disposable CI route may try a locally available locale.
             $installed = Join-Path $env:ProgramFiles 'NativeIME-AlphaLab'
@@ -190,8 +194,8 @@ jobs:
           } finally {
             $installed = Join-Path $env:ProgramFiles 'NativeIME-AlphaLab'
             if (Test-Path "$installed/alpha-owned.json") {
+              # Do not reuse a previous native verifier's exit code (e.g. 77).
               & "$lab/Install-Alpha.ps1" -Action Remove -IsolatedVm
-              if ($LASTEXITCODE -ne 0) { throw "Alpha unregister/rollback failed: $LASTEXITCODE" }
               if (Test-Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{9D61A6D1-2C5E-4B6B-9C8A-7A8E1F2D1A10}") {
                 throw "NativeIME COM registration remains after rollback."
               }
@@ -199,6 +203,9 @@ jobs:
             }
           }
           Write-Host "Alpha preparation, package integrity, real engine, COM registration and unregister/rollback verified. Desktop result is separate."
+          # An explicitly reported desktop BLOCKED is not a deployment failure.
+          # Unexpected verifier failures throw above; no pass is inferred.
+          exit 0
       - name: Upload first-party experimental desktop candidate
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
