@@ -5,6 +5,10 @@
 #include <future>
 #include <algorithm>
 #include <sstream>
+#include <vector>
+#include <iomanip>
+#include <psapi.h>
+#include "core/zip_store.hpp"
 #include "diagnostics.hpp"
 #include "diagnostics_page.hpp"
 #include "engine_client.hpp"
@@ -22,6 +26,21 @@ std::future<int> probe;
 HANDLE verifier=nullptr;
 int engineResult=-1,desktopResult=-1,preflightResult=-1;
 ULONGLONG engineMs=0;
+struct Perf { ULONGLONG elapsed=0; double cpu=0; SIZE_T workingSet=0; };
+std::vector<Perf> samples;
+ULONGLONG captureStarted=0,lastSample=0,lastCpu=0;
+bool ReadCpu(ULONGLONG& value){
+ FILETIME c{},e{},k{},u{}; if(!GetProcessTimes(GetCurrentProcess(),&c,&e,&k,&u))return false;
+ ULARGE_INTEGER a{},b{};a.LowPart=k.dwLowDateTime;a.HighPart=k.dwHighDateTime;b.LowPart=u.dwLowDateTime;b.HighPart=u.dwHighDateTime;value=a.QuadPart+b.QuadPart;return true;
+}
+void SamplePerformance(){
+ if(!capture.Active())return;const auto now=GetTickCount64();if(lastSample&&now-lastSample<1000)return;
+ PROCESS_MEMORY_COUNTERS_EX mem{};mem.cb=sizeof(mem);ULONGLONG cpu=0;
+ if(!GetProcessMemoryInfo(GetCurrentProcess(),reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&mem),sizeof(mem))||!ReadCpu(cpu))return;
+ double pct=0;if(lastSample&&now>lastSample&&cpu>=lastCpu)pct=100.0*double(cpu-lastCpu)/10000.0/double(now-lastSample);
+ samples.push_back({now-captureStarted,pct,mem.WorkingSetSize});if(samples.size()>1800)samples.erase(samples.begin(),samples.begin()+300);
+ lastSample=now;lastCpu=cpu;
+}
 std::wstring Base(){return std::filesystem::path(ModulePath(nullptr)).parent_path().wstring();}
 const wchar_t* Result(int code){return code<0?L"未测试":code==0?L"通过":code==77?L"前置条件不足":L"失败";}
 HWND Control(const wchar_t* klass,const wchar_t* label,DWORD style,int id,int x,int y,int w,int h){
@@ -75,6 +94,11 @@ void SelfCheck(){
     realVerifier=false;
     if(!LaunchVerifier(false))preflightResult=1;
 }
+std::string PerformanceCsv(){
+ std::ostringstream out;out<<"elapsed_ms,process_cpu_one_core_pct,working_set_bytes\n";
+ for(const auto& s:samples)out<<s.elapsed<<","<<std::fixed<<std::setprecision(2)<<s.cpu<<","<<s.workingSet<<"\n";
+ return out.str();
+}
 std::string Report(){
     auto v=capture.Read();std::ostringstream out;
     out<<"{\n  \"schema\":1,\n  \"build\":\"" NATIVEIME_BUILD_ID "\",\n  \"platform\":\"windows-x64\",\n"
@@ -89,13 +113,17 @@ void Save(){
     if(capture.Active()||!capture.Stop())return;
     SYSTEMTIME t{};GetLocalTime(&t);
     wchar_t path[MAX_PATH]{};
-    swprintf_s(path,L"NativeIME-Diagnostics-%04u%02u%02u-%02u%02u%02u.json",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond);
-    OPENFILENAMEW ofn{sizeof(ofn)};ofn.hwndOwner=root;ofn.lpstrFilter=L"JSON report (*.json)\0*.json\0\0";
-    ofn.lpstrFile=path;ofn.nMaxFile=MAX_PATH;ofn.lpstrDefExt=L"json";ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+    swprintf_s(path,L"NativeIME-Diagnostics-%04u%02u%02u-%02u%02u%02u.zip",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond);
+    OPENFILENAMEW ofn{sizeof(ofn)};ofn.hwndOwner=root;ofn.lpstrFilter=L"Diagnostic ZIP (*.zip)\0*.zip\0\0";
+    ofn.lpstrFile=path;ofn.nMaxFile=MAX_PATH;ofn.lpstrDefExt=L"zip";ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&ofn))return;
-    std::ofstream file(std::filesystem::path(path),std::ios::binary|std::ios::trunc);
-    auto content=Report();file.write(content.data(),static_cast<std::streamsize>(content.size()));file.close();
-    MessageBoxW(root,file?L"已导出脱敏 JSON。请检查内容后再分享。":L"报告保存失败。",L"NativeIME",MB_OK|(file?MB_ICONINFORMATION:MB_ICONERROR));
+    try{
+        const auto summary=Report(),perf=PerformanceCsv();
+        const auto zip=nativeime::core::StoreZip({{"summary.json",summary},{"performance.csv",perf}});
+        std::ofstream file(std::filesystem::path(path),std::ios::binary|std::ios::trunc);
+        file.write(zip.data(),static_cast<std::streamsize>(zip.size()));file.close();
+        MessageBoxW(root,file?L"已导出脱敏 ZIP 报告。包含摘要与性能采样，请检查后再分享。":L"报告保存失败。",L"NativeIME",MB_OK|(file?MB_ICONINFORMATION:MB_ICONERROR));
+    }catch(...){MessageBoxW(root,L"报告生成失败。",L"NativeIME",MB_OK|MB_ICONERROR);}
 }
 LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
     try{
@@ -106,19 +134,19 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             status=Control(L"STATIC",L"",0,0,24,52,630,24);
             startButton=Control(L"BUTTON",L"开始采集",BS_PUSHBUTTON|WS_TABSTOP,Start,24,88,140,32);
             stopButton=Control(L"BUTTON",L"停止采集",BS_PUSHBUTTON|WS_TABSTOP,Stop,174,88,140,32);
-            exportButton=Control(L"BUTTON",L"导出脱敏 JSON",BS_PUSHBUTTON|WS_TABSTOP,Export,324,88,150,32);
+            exportButton=Control(L"BUTTON",L"导出 ZIP 报告",BS_PUSHBUTTON|WS_TABSTOP,Export,324,88,150,32);
             clearButton=Control(L"BUTTON",L"清空",BS_PUSHBUTTON|WS_TABSTOP,Clear,484,88,110,32);
             details=Control(L"STATIC",L"",0,0,24,144,630,110);
             checkButton=Control(L"BUTTON",L"一键自检",BS_PUSHBUTTON|WS_TABSTOP,Check,24,270,140,32);
             desktopButton=Control(L"BUTTON",L"隔离桌面 TSF 实测",BS_PUSHBUTTON|WS_TABSTOP,Desktop,174,270,200,32);
             checkStatus=Control(L"STATIC",L"",0,0,24,320,630,44);
-            Control(L"STATIC",L"仅记录计数与 IPC 耗时，不记录输入文字、拼音、按键、密码或窗口标题。\r\n自检不修改系统配置；TSF 实测仅限已准备的隔离 Windows 测试环境。",0,0,24,380,630,62);
+            Control(L"STATIC",L"记录聚合事件、进程 CPU 与内存采样，不记录输入文字、拼音、按键、密码或窗口标题。\r\n自检不修改系统配置；TSF 实测仅限已准备的隔离 Windows 测试环境。",0,0,24,380,630,62);
             SetTimer(h,1,250,nullptr);Refresh();return 0;
         case WM_COMMAND:
             switch(LOWORD(w)){
-            case Start:if(!capture.Start())MessageBoxW(h,L"无法开始：可能已有采集会话。",L"NativeIME",MB_OK);break;
+            case Start:if(!capture.Start())MessageBoxW(h,L"无法开始：可能已有采集会话。",L"NativeIME",MB_OK);else{samples.clear();captureStarted=lastSample=GetTickCount64();ReadCpu(lastCpu);}break;
             case Stop:if(!capture.Stop())MessageBoxW(h,L"暂时无法停止，请重试。",L"NativeIME",MB_OK);break;
-            case Clear:if(capture.Clear()){engineResult=desktopResult=preflightResult=-1;engineMs=0;}break;
+            case Clear:if(capture.Clear()){engineResult=desktopResult=preflightResult=-1;engineMs=0;samples.clear();captureStarted=lastSample=lastCpu=0;}break;
             case Export:Save();break;
             case Check:SelfCheck();break;
             case Desktop:
@@ -128,7 +156,7 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             }
             Refresh();return 0;
         case WM_TIMER:
-            if(!capture.Active())capture.Stop();
+            if(capture.Active())SamplePerformance();else capture.Stop();
             if(probe.valid()&&probe.wait_for(std::chrono::seconds(0))==std::future_status::ready){
                 int r=probe.get();engineResult=r>=0?0:1;engineMs=r>=0?static_cast<ULONGLONG>(r):0;
             }
