@@ -1,5 +1,6 @@
 #include "core/input_session.hpp"
 #include "core/pinyin_correction.hpp"
+#include <algorithm>
 
 namespace nativeime::core {
 void InputSession::Reset() noexcept {
@@ -13,19 +14,22 @@ void InputSession::SetChinese(bool enabled) {
 }
 bool InputSession::AcceptCandidates(const std::wstring& input,std::vector<Candidate> candidates) {
     if(input.empty()||input!=preedit_||!chinese_)return false;
+    candidates.erase(std::remove_if(candidates.begin(),candidates.end(),[](const Candidate& c){return c.text.empty();}),candidates.end());
     if(candidates.size()>9)candidates.resize(9);
+    for(auto& candidate:candidates)if(candidate.annotation==RawPinyinTag)candidate.text=preedit_;
     candidates_=std::move(candidates);selected_=0;return true;
 }
 void InputSession::Refresh() {
-    candidates_ = (query_ ? query_(preedit_) : engine_.Query(preedit_)).candidates;
-    if (candidates_.size() > 9) candidates_.resize(9);
-    selected_ = 0;
+    ClearCandidates();
+    if(preedit_.empty())return;
+    AcceptCandidates(preedit_,(query_ ? query_(preedit_) : engine_.Query(preedit_)).candidates);
 }
 InputResult InputSession::Commit(std::size_t index, bool appendSpace) {
     if (preedit_.empty()) return {};
     if (!candidates_.empty() && index >= candidates_.size()) return {};
-    InputResult result{true, candidates_.empty() ? preedit_ : candidates_[index].text};
-    if (appendSpace && (candidates_.empty() || candidates_[index].annotation==RawPinyinTag)) result.commit += L' ';
+    const bool raw=candidates_.empty()||candidates_[index].annotation==RawPinyinTag;
+    InputResult result{true,raw?preedit_:candidates_[index].text};
+    if(appendSpace&&raw)result.commit+=L' ';
     Reset();
     return result;
 }

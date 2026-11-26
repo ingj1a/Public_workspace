@@ -54,5 +54,16 @@ int main() {
     check(async.AcceptCandidates(L"nihao",{{L"你好",1,L""}}),"accept remote candidates");
     check(async.Handle({Key::Space}).commit==L"你好","remote commit");
     type(async,L"abc");check(async.Handle({Key::Enter}).commit==L"abc","offline raw commit");
+
+    auto fallback=[](const std::wstring& p){return QueryResult{PinyinEngine::Normalize(p),{{PinyinEngine::Normalize(p),0,L"原拼音"},{L"你好",70,L"纠错"}}};};
+    InputSession raw(fallback); type(raw,L"NiHoa");
+    check(raw.Candidates()[0].text==L"NiHoa","raw candidate casing");
+    check(raw.Handle({Key::Space}).commit==L"NiHoa ","raw fallback preserves case");
+    type(raw,L"NIHOA");check(raw.Handle({Key::Digit,L'1'}).commit==L"NIHOA","raw digit preserves case");
+    unsigned calls=0;
+    InputSession invalid([&](const std::wstring& p){++calls;return QueryResult{p,{{L"",99,L""},{L"有效",80,L""}}};});
+    type(invalid,L"a");check(invalid.Candidates().size()==1,"empty candidate removed");
+    invalid.Handle({Key::Backspace});check(invalid.Candidates().empty()&&calls==1,"empty preedit clears candidates");
+    check(!invalid.Handle({Key::Next}).consumed,"no ghost candidate");
     return failures ? EXIT_FAILURE : EXIT_SUCCESS;
 }

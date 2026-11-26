@@ -40,8 +40,8 @@ if(-not $Prepared){
     Write-Host 'PASS: clean Alpha package, exact first-party inventory, pinned sources and SHA256 manifest.'
     return
 }
-$prepared=Get-Content -LiteralPath (Join-Path $root 'prepared.json') -Raw | ConvertFrom-Json
-if($prepared.schema -ne 1 -or $prepared.build -cne $manifest.build -or @($prepared.files).Count -eq 0){throw 'Prepared package/build mismatch.'}
+$preparedManifest=Get-Content -LiteralPath (Join-Path $root 'prepared.json') -Raw | ConvertFrom-Json
+if($preparedManifest.schema -ne 1 -or $preparedManifest.build -cne $manifest.build -or @($preparedManifest.files).Count -eq 0){throw 'Prepared package/build mismatch.'}
 $seen=@{}
 foreach($item in $prepared.files){
     $name=[string]$item.name
