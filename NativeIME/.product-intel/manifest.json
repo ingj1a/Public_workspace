@@ -197,8 +197,14 @@
     },
     {
       "id": "TEST-ALPHA-PREPARE",
+      "status": "PARTIAL",
+      "scope": "3e681a2: manifest, six downloads, hash validation, preparation, real engine start passed; install script parser failure; repaired source and added early parser gate; new deployment not run.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45775596954/job/139758381156"
+    },
+    {
+      "id": "TEST-INPUT-PREFERENCES",
       "status": "NOT_RUN",
-      "scope": "Pinned upstream acquisition, engine startup with prepared directory, isolated registration and rollback; CI pending."
+      "scope": "Portable preferences encode/decode, candidate first/last, main setup page smoke. Registry persistence and interactive TSF require lab validation."
     }
   ],
   "evidenceLevel": "9d4f2a2 Windows 13/13, 14/14, 16/16 passed; Alpha preparation and rollback pending CI; active desktop NOT_RUN."

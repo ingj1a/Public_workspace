@@ -16,3 +16,5 @@ Use an isolated Windows 10/11 x64 VM with a snapshot. The first-party files are 
 If a script is blocked by execution policy, do not change machine-wide security policy. Review script contents and use a trusted, organization-approved way to run it. No need to disable antivirus, SmartScreen or other security protection.
 
 Current gates: first-party build and core/IPC tests, upstream prepare engine check, disposable registration/rollback CI; actual interactive TSF, visual and performance acceptance remain separate.
+
+NativeIME.exe now has a built-in Input Settings / Deployment page. In the original extracted trusted package it can start the existing preparation/install/remove scripts (explicit VM confirmation and UAC where needed); it is not yet a self-contained native installer. No policy bypass. The protected installed copy does not contain deployment scripts: use the original extracted package for rollback. The input shortcut and optional Home/End candidate navigation are saved per user, effective at next TSF activation. Home/End remain host keys by default. No user typing is captured.

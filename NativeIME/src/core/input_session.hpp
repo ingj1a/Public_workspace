@@ -5,7 +5,7 @@
 #include <utility>
 
 namespace nativeime::core {
-enum class Key { Letter, Space, Enter, Backspace, Escape, Previous, Next, Digit, Other };
+enum class Key { Letter, Space, Enter, Backspace, Escape, Previous, Next, First, Last, Digit, Other };
 struct KeyEvent {
     Key key = Key::Other;
     wchar_t character = 0;

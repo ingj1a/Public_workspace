@@ -57,7 +57,9 @@ function CopyChecked($item,[bool]$first){
     if($first){
         if((Get-AlphaComponents) -cnotcontains $name){throw 'Unexpected binary name.'}
     }else{
-        if($name -notmatch '^(runtime|shared|upstream-notices)/[A-Za-z0-9_. /-]+
+        $parts=@($name -split '/')
+        if($name -notmatch '^(runtime|shared|upstream-notices)/[A-Za-z0-9_. /-]+$' -or $parts -contains '..' -or $parts -contains '.' -or @($parts | Where-Object { $_ -eq '' -or $_ -match '[. ]$' }).Count -gt 0 -or $seenPrepared.ContainsKey($name)){throw 'Unexpected or duplicate prepared file name.'}
+        $seenPrepared[$name]=$true
     }
     if($item.sha256 -notmatch '^[A-Fa-f0-9]{64}$'){throw 'Invalid SHA256.'}
     $from=Join-Path $src $name
@@ -86,66 +88,5 @@ try{
         try{RunReg $true}catch{Write-Warning 'Rollback failed; keep protected files and inspect registration.'}
     }
     if($created -and -not (Existing) -and (Test-Path -LiteralPath $root)){Remove-Item -LiteralPath $root -Recurse -Force}
-    throw
-}
- -or ($name -split '/') -contains '..' -or ($name -split '/') -contains '.' -or ($name -split '/') -match '[. ]
-    }
-    if($item.sha256 -notmatch '^[A-Fa-f0-9]{64}$'){throw 'Invalid SHA256.'}
-    $from=Join-Path $src $name
-    Assert-NoReparse $from
-    if((Get-FileHash -LiteralPath $from).Hash -ne $item.sha256){throw "Source hash mismatch: $name"}
-    $to=Join-Path $root $name
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
-    Copy-Item -LiteralPath $from -Destination $to
-    if((Get-FileHash -LiteralPath $to).Hash -ne $item.sha256){throw "Staged hash mismatch: $name"}
-}
-$attempted=$false
-try{
-    New-Item -ItemType Directory -Path $root | Out-Null
-    foreach($item in $m.firstParty){CopyChecked $item $true}
-    foreach($item in $p.files){CopyChecked $item $false}
-    if(-not (Test-Path -LiteralPath $dll) -or -not (Test-Path -LiteralPath "$root\runtime\rime.dll") -or -not (Test-Path -LiteralPath "$root\NativeIME.exe")){throw 'Required product components missing.'}
-    @{schema=1;build=$m.build;dllSha256=(Get-FileHash -LiteralPath $dll).Hash} | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding UTF8
-    # The preflight established no existing NativeIME registration.
-    $attempted=$true;RunReg $false
-    if((RegisteredPath) -ine $dll){throw 'COM registration ownership verification failed.'}
-    Write-Host "Alpha registered: $root\NativeIME.exe"
-    Write-Host 'No default IME, login startup or input language change. Manually enable/select NativeIME in Windows only when testing.'
-}catch{
-    if($attempted){
-        try{RunReg $true}catch{Write-Warning 'Rollback failed; keep protected files and inspect registration.'}
-    }
-    if(-not (Existing) -and (Test-Path -LiteralPath $root)){Remove-Item -LiteralPath $root -Recurse -Force}
-    throw
-}
- -or $seenPrepared.ContainsKey($name)){throw 'Unexpected or duplicate prepared file name.'}
-        $seenPrepared[$name]=$true
-    }
-    if($item.sha256 -notmatch '^[A-Fa-f0-9]{64}$'){throw 'Invalid SHA256.'}
-    $from=Join-Path $src $name
-    Assert-NoReparse $from
-    if((Get-FileHash -LiteralPath $from).Hash -ne $item.sha256){throw "Source hash mismatch: $name"}
-    $to=Join-Path $root $name
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
-    Copy-Item -LiteralPath $from -Destination $to
-    if((Get-FileHash -LiteralPath $to).Hash -ne $item.sha256){throw "Staged hash mismatch: $name"}
-}
-$attempted=$false
-try{
-    New-Item -ItemType Directory -Path $root | Out-Null
-    foreach($item in $m.firstParty){CopyChecked $item $true}
-    foreach($item in $p.files){CopyChecked $item $false}
-    if(-not (Test-Path -LiteralPath $dll) -or -not (Test-Path -LiteralPath "$root\runtime\rime.dll") -or -not (Test-Path -LiteralPath "$root\NativeIME.exe")){throw 'Required product components missing.'}
-    @{schema=1;build=$m.build;dllSha256=(Get-FileHash -LiteralPath $dll).Hash} | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding UTF8
-    # The preflight established no existing NativeIME registration.
-    $attempted=$true;RunReg $false
-    if((RegisteredPath) -ine $dll){throw 'COM registration ownership verification failed.'}
-    Write-Host "Alpha registered: $root\NativeIME.exe"
-    Write-Host 'No default IME, login startup or input language change. Manually enable/select NativeIME in Windows only when testing.'
-}catch{
-    if($attempted){
-        try{RunReg $true}catch{Write-Warning 'Rollback failed; keep protected files and inspect registration.'}
-    }
-    if(-not (Existing) -and (Test-Path -LiteralPath $root)){Remove-Item -LiteralPath $root -Recurse -Force}
     throw
 }

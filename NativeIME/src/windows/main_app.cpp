@@ -11,12 +11,13 @@
 #include <algorithm>
 #include "engine_client.hpp"
 #include "lab_environment.hpp"
+#include "setup_page.hpp"
 #include "diagnostics_page.hpp"
 #include "pipe_security.hpp"
 namespace {
 using namespace nativeime::win;
-enum {Home=201,Diagnostics,StartEngine,StopEngine,CheckSetup,LanguageSettings};
-HWND root=nullptr,home=nullptr,diag=nullptr,homeNav=nullptr,diagNav=nullptr;
+enum {Home=201,Diagnostics,StartEngine,StopEngine,CheckSetup,LanguageSettings,Setup};
+HWND root=nullptr,home=nullptr,diag=nullptr,setup=nullptr,homeNav=nullptr,diagNav=nullptr,setupNav=nullptr;
 HWND engineState=nullptr,startButton=nullptr,stopButton=nullptr,testEdit=nullptr,setupState=nullptr;
 HANDLE session=nullptr,stopEvent=nullptr,job=nullptr;
 bool stopping=false;
@@ -38,11 +39,12 @@ HWND Control(HWND parent,const wchar_t* cls,const wchar_t* text,DWORD style,int 
     if(c)SendMessageW(c,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
     return c;
 }
-void ShowPage(bool diagnostic){
-    ShowWindow(home,diagnostic?SW_HIDE:SW_SHOW);
-    ShowWindow(diag,diagnostic?SW_SHOW:SW_HIDE);
-    EnableWindow(homeNav,diagnostic);EnableWindow(diagNav,!diagnostic);
-    SetFocus(diagnostic?homeNav:diagNav);
+void ShowPage(int selected){
+    ShowWindow(home,selected==Home?SW_SHOW:SW_HIDE);
+    ShowWindow(diag,selected==Diagnostics?SW_SHOW:SW_HIDE);
+    ShowWindow(setup,selected==Setup?SW_SHOW:SW_HIDE);
+    EnableWindow(homeNav,selected!=Home);EnableWindow(diagNav,selected!=Diagnostics);EnableWindow(setupNav,selected!=Setup);
+    SetFocus(selected==Home?diagNav:homeNav);
 }
 void RefreshSetup(){
     const auto s=InspectLabEnvironment();
@@ -71,13 +73,14 @@ void Refresh(){
     else if(everStarted&&lastExit)text=L"引擎会话退出，状态码 "+std::to_wstring(lastExit)+L"。";
     else text=L"引擎会话未启动。";
     SetWindowTextW(engineState,text.c_str());
-    EnableWindow(startButton,!session&&!readiness.valid()&&!closing);EnableWindow(stopButton,session&&!stopping&&!closing);
+    SetSetupEngineBusy(session!=nullptr||readiness.valid()||closing);
+    EnableWindow(startButton,!session&&!readiness.valid()&&!closing&&!SetupPageBusy());EnableWindow(stopButton,session&&!stopping&&!closing);
     if(closing&&!session&&!readiness.valid())DestroyWindow(root);
 }
 bool Safe(const std::wstring& p){return !p.empty()&&p.find(L'"')==std::wstring::npos&&p.back()!=L'\\';}
 std::wstring Q(const std::wstring& p){return L"\""+p+L"\"";}
 bool StartSession(){
-    if(session||readiness.valid()||closing)return false;
+    if(session||readiness.valid()||closing||SetupPageBusy())return false;
     const auto base=std::filesystem::path(ModulePath(nullptr)).parent_path();
     const auto exe=(base/L"NativeIME.Session.exe").wstring();
     const auto shared=(base/L"shared").wstring(),dll=(base/L"runtime"/L"rime.dll").wstring();
@@ -129,11 +132,13 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             root=h;auto instance=GetModuleHandleW(nullptr);
             homeNav=Control(h,L"BUTTON",L"常规",BS_PUSHBUTTON|WS_TABSTOP,Home,24,14,110,34);
             diagNav=Control(h,L"BUTTON",L"诊断与测试",BS_PUSHBUTTON|WS_TABSTOP,Diagnostics,144,14,150,34);
+            setupNav=Control(h,L"BUTTON",L"输入设置 / 部署",BS_PUSHBUTTON|WS_TABSTOP,Setup,304,14,170,34);
             WNDCLASSW wc{};wc.lpfnWndProc=HomeProc;wc.hInstance=instance;wc.lpszClassName=L"NativeIME.HomePage";wc.hbrBackground=GetSysColorBrush(COLOR_WINDOW);
             if(!RegisterClassW(&wc)&&GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return -1;
             home=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,L"",WS_CHILD|WS_CLIPCHILDREN,0,58,680,480,h,nullptr,instance,nullptr);
             diag=CreateDiagnosticsPage(h,instance);
-            if(!home||!diag||!homeNav||!diagNav)return -1;
+            setup=CreateSetupPage(h,instance);
+            if(!home||!diag||!setup||!homeNav||!diagNav||!setupNav)return -1;
             SetWindowPos(diag,nullptr,0,58,680,480,SWP_NOZORDER|SWP_NOACTIVATE);
             Control(home,L"STATIC",L"NativeIME",0,0,24,20,630,30);
             Control(home,L"STATIC",L"原生 Windows 拼音输入法 · 实验开发版本",0,0,24,56,630,26);
@@ -148,20 +153,22 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             testEdit=Control(home,L"EDIT",L"",WS_BORDER|WS_TABSTOP|ES_AUTOHSCROLL,0,24,416,620,30);
             if(!engineState||!startButton||!stopButton||!testEdit||!setupState)return -1;
             RefreshSetup();
-            SetTimer(h,1,250,nullptr);ShowPage(false);Refresh();return 0;
+            SetTimer(h,1,250,nullptr);ShowPage(Home);Refresh();return 0;
         }
         case WM_COMMAND:
             switch(LOWORD(w)){
-            case Home:ShowPage(false);RefreshSetup();break;
+            case Home:ShowPage(Home);RefreshSetup();break;
             case CheckSetup:RefreshSetup();break;
             case LanguageSettings:if(reinterpret_cast<INT_PTR>(ShellExecuteW(h,L"open",L"ms-settings:regionlanguage",nullptr,nullptr,SW_SHOWNORMAL))<=32)MessageBoxW(h,L"请手动打开 Windows 设置 > 时间和语言。",L"NativeIME",MB_OK);break;
-            case Diagnostics:ShowPage(true);break;
+            case Diagnostics:ShowPage(Diagnostics);break;
+            case Setup:ShowPage(Setup);break;
             case StartEngine:if(!StartSession())MessageBoxW(h,L"引擎未启动。请检查测试运行库与已有会话。",L"NativeIME",MB_OK);break;
             case StopEngine:if(session&&!stopping){SetEvent(stopEvent);stopping=true;}break;
             }
             Refresh();return 0;
         case WM_TIMER:Refresh();return 0;
         case WM_CLOSE:
+            if(SetupPageBusy()){MessageBoxW(h,L"请先完成部署操作。",L"NativeIME",MB_OK);return 0;}
             if(!CloseDiagnosticsPage()){MessageBoxW(h,L"诊断测试仍在运行或采集尚未停止，请完成后退出。",L"NativeIME",MB_OK);return 0;}
             closing=true;
             if(session&&!stopping){SetEvent(stopEvent);stopping=true;}
@@ -189,7 +196,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR cmd,int show){
         DWORD pid=0;GetWindowThreadProcessId(diag,&pid);
         bool ok=GetParent(diag)==h&&pid==GetCurrentProcessId()&&PageVisible(home)&&!PageVisible(diag)&&GetParent(testEdit)==home;
         SendMessageW(h,WM_COMMAND,Diagnostics,0);ok=ok&&PageVisible(diag)&&!PageVisible(home);
-        SendMessageW(h,WM_COMMAND,Home,0);ok=ok&&PageVisible(home)&&!PageVisible(diag)&&CloseDiagnosticsPage();
+        SendMessageW(h,WM_COMMAND,Setup,0);ok=ok&&GetParent(setup)==h&&PageVisible(setup)&&!PageVisible(home)&&!PageVisible(diag)&&!SetupPageBusy();
+        SendMessageW(h,WM_COMMAND,Home,0);ok=ok&&PageVisible(home)&&!PageVisible(diag)&&!PageVisible(setup)&&CloseDiagnosticsPage();
         DestroyWindow(h);return ok?0:4;
     }
     ShowWindow(h,show);UpdateWindow(h);

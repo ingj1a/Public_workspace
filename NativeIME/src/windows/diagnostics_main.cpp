@@ -15,6 +15,7 @@
 #include "diagnostics.hpp"
 #include "diagnostics_page.hpp"
 #include "lab_environment.hpp"
+#include "input_preferences.hpp"
 #include "engine_client.hpp"
 #ifndef NATIVEIME_BUILD_ID
 #define NATIVEIME_BUILD_ID "local"
@@ -141,9 +142,9 @@ std::string PerformanceCsv(){
  return out.str();
 }
 std::string Report(){
-    auto v=capture.Read();const auto env=InspectLabEnvironment();std::ostringstream out;
+    auto v=capture.Read();const auto env=InspectLabEnvironment();const auto prefs=LoadInputPreferences();std::ostringstream out;
     out<<"{\n  \"schema\":2,\n  \"build\":\"" NATIVEIME_BUILD_ID "\",\n  \"platform\":\"windows-x64\",\n"
-        <<"  \"duration_ms\":"<<capture.Duration()<<",\n  \"capture\":\"aggregate_only\",\n  \"environment\":{\"runtime\":"<<env.runtime<<",\"schema\":"<<env.schema<<",\"service\":"<<env.service<<",\"registered_build\":"<<env.registered<<",\"profile_enabled\":"<<env.enabled<<",\"chinese_language\":"<<env.chineseLanguage<<"},\n  \"events\":{";
+        <<"  \"duration_ms\":"<<capture.Duration()<<",\n  \"capture\":\"aggregate_only\",\n  \"environment\":{\"runtime\":"<<env.runtime<<",\"schema\":"<<env.schema<<",\"service\":"<<env.service<<",\"registered_build\":"<<env.registered<<",\"profile_enabled\":"<<env.enabled<<",\"chinese_language\":"<<env.chineseLanguage<<"},\n  \"input_preferences\":{\"mode_shortcut\":"<<(prefs.modeShortcut?1:0)<<",\"candidate_edges\":"<<(prefs.candidateEdges?1:0)<<"},\n  \"events\":{";
     for(unsigned i=0;i<d::Count;++i){if(i)out<<',';out<<"\n    \""<<d::Names[i]<<"\":"<<v[i];}
     out<<"\n  },\n  \"self_test\":{\"engine\":"<<engineResult<<",\"engine_probe_ms\":"<<engineMs
        <<",\"desktop_preflight\":"<<preflightResult<<",\"tsf_desktop\":"<<desktopResult

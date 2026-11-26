@@ -1,5 +1,6 @@
 #include "core/input_session.hpp"
 #include "core/mode_switch.hpp"
+#include "core/input_preferences.hpp"
 #include <iostream>
 #include <cstdlib>
 using namespace nativeime::core;
@@ -14,7 +15,10 @@ int main() {
     check(IsModeSwitchChord(true,true,true,false,false),"mode chord");
     check(!IsModeSwitchChord(true,true,false,false,false)&&!IsModeSwitchChord(true,true,true,true,false)&&!IsModeSwitchChord(true,true,true,false,true)&&!IsModeSwitchChord(false,true,true,false,false),"other shortcuts pass through");
     check(CanSwitchMode(true,false)&&!CanSwitchMode(false,false)&&!CanSwitchMode(true,true),"mode switch only idle supported context");
+    for(unsigned i=0;i<4;++i)check(EncodePreferences(DecodePreferences(i))==i,"preferences round trip");
+    check(EncodePreferences(DecodePreferences(99))==1,"invalid preferences default");
     InputSession s;
+    check(!s.Handle({Key::First}).consumed&&!s.Handle({Key::Last}).consumed,"idle edge navigation passes");
     check(!s.Handle({Key::Space}).consumed, "idle space passes");
     check(!s.Handle({Key::Backspace}).consumed, "idle backspace passes");
     type(s,L"nihao");
@@ -23,6 +27,8 @@ int main() {
     check(!s.Handle({Key::Digit,L'9'}).consumed && s.Preedit()==L"nihao", "invalid candidate passes");
     check(s.Handle({Key::Next}).consumed && s.Selected()==1, "next");
     check(s.Handle({Key::Previous}).consumed && s.Selected()==0, "previous");
+    check(s.Handle({Key::Last}).consumed&&s.Selected()==1,"last candidate");
+    check(s.Handle({Key::First}).consumed&&s.Selected()==0,"first candidate");
     check(s.Handle({Key::Digit,L'2'}).commit==L"拟好", "second candidate");
     check(s.Preedit().empty() && !s.Handle({Key::Enter}).consumed, "no duplicate commit");
     type(s,L"nihaox"); s.Handle({Key::Backspace});

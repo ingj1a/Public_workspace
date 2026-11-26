@@ -61,6 +61,12 @@ InputResult InputSession::Handle(KeyEvent e) {
         if (e.character < L'1' || e.character > L'9' ||
             static_cast<std::size_t>(e.character - L'1') >= candidates_.size()) return {};
         return Commit(static_cast<std::size_t>(e.character - L'1'), false);
+    case Key::First:
+        if(candidates_.empty())return {};
+        selected_=0;return {true,{}};
+    case Key::Last:
+        if(candidates_.empty())return {};
+        selected_=candidates_.size()-1;return {true,{}};
     case Key::Previous:
         if (candidates_.empty()) return {};
         if (selected_ > 0) --selected_;

@@ -26,6 +26,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Parse all Alpha PowerShell sources before deployment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem NativeIME/tools -Filter '*.ps1' | ForEach-Object {
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count) { throw "PowerShell parse failure in $($_.Name): $errors" }
+          }
       - name: Prepare official librime runtime (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

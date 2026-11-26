@@ -14,6 +14,7 @@
 #include "async_engine.hpp"
 #include "diagnostics.hpp"
 #include "core/mode_switch.hpp"
+#include "input_preferences.hpp"
 #include "pipe_security.hpp"
 #include <memory>
 #include <textstor.h>
@@ -81,6 +82,7 @@ public:
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         if(SUCCEEDED(hr)){
             app_=nativeime::win::CurrentApplication();
+            if(!secure_)preferences_=nativeime::win::LoadInputPreferences();
             if(!secure_){ StartEngine(); diagnostics_.Record(nativeime::win::diag::Event::Activation); }
             ITfSource* source=nullptr;
             if(SUCCEEDED(threadManager_->QueryInterface(IID_PPV_ARGS(&source)))){
@@ -166,7 +168,7 @@ public:
         *eaten = FALSE;
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         // Explicit experimental mode shortcut, only when no composition is active.
-        if(IsModeChord(key)){*eaten=CanToggle(context);return S_OK;}
+        if(preferences_.modeShortcut&&IsModeChord(key)){*eaten=CanToggle(context);return S_OK;}
         // Test callback is read-only: never advance composition twice.
         if (Eligible(context) && (!composition_ || (context == context_ && GetFocus()==compositionFocus_))) {
             auto event = Translate(key);
@@ -190,7 +192,7 @@ public:
         *eaten = FALSE;
 #ifdef NATIVEIME_EXPERIMENTAL_TSF
         try {
-            if(IsModeChord(key)){
+            if(preferences_.modeShortcut&&IsModeChord(key)){
                 if(CanToggle(context)){
                     *eaten=TRUE;
                     if(!(static_cast<ULONG_PTR>(keyData)&(1ull<<30))){
@@ -265,6 +267,7 @@ private:
     using Session = nativeime::core::InputSession;
     using Result = nativeime::core::InputResult;
     nativeime::win::diag::Writer diagnostics_;
+    nativeime::core::InputPreferences preferences_;
     Session session_{[](const std::wstring& input){return nativeime::core::QueryResult{input,{}};}};
     std::unique_ptr<nativeime::win::AsyncEngine> engine_;
     HWND engineWindow_=nullptr;
@@ -373,12 +376,15 @@ private:
         if(key>='1'&&key<='9')return {Key::Digit,static_cast<wchar_t>(key)};
         if(key==VK_UP)return {Key::Previous};
         if(key==VK_DOWN)return {Key::Next};
+        if(key==VK_HOME)return {Key::First};
+        if(key==VK_END)return {Key::Last};
         return {};
     }
     bool Wants(KeyEvent event) const noexcept {
         if(event.shortcut) return false;
         if(event.key==Key::Letter) return session_.Preedit().size()<Session::MaxPreedit;
         if(event.key==Key::Digit)return popup_.Visible()&&event.character>=L'1'&&event.character<=L'9'&&static_cast<std::size_t>(event.character-L'1')<session_.Candidates().size();
+        if(event.key==Key::First||event.key==Key::Last)return preferences_.candidateEdges&&popup_.Visible()&&!session_.Candidates().empty();
         if(event.key==Key::Previous||event.key==Key::Next)return popup_.Visible()&&!session_.Candidates().empty();
         return !session_.Preedit().empty() && (event.key==Key::Space||event.key==Key::Enter||
             event.key==Key::Backspace||event.key==Key::Escape);
