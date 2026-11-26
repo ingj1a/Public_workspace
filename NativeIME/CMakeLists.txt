@@ -141,7 +141,7 @@ if(WIN32)
     add_executable(NativeIME.TsfDesktopE2E tests/tsf_desktop_e2e.cpp src/windows/tsf_edit.cpp)
     target_include_directories(NativeIME.TsfDesktopE2E PRIVATE src)
     target_compile_definitions(NativeIME.TsfDesktopE2E PRIVATE UNICODE _UNICODE)
-    target_link_libraries(NativeIME.TsfDesktopE2E PRIVATE ole32 uuid user32)
+    target_link_libraries(NativeIME.TsfDesktopE2E PRIVATE ole32 uuid user32 advapi32)
     # Never run an interactive profile test on a shared/unprepared build machine.
     option(NATIVEIME_INTERACTIVE_DESKTOP_TEST "Opt in on a disposable prepared interactive Windows VM" OFF)
     if(NATIVEIME_INTERACTIVE_DESKTOP_TEST)

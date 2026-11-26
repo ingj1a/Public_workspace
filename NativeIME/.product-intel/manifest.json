@@ -205,6 +205,16 @@
       "id": "TEST-INPUT-PREFERENCES",
       "status": "NOT_RUN",
       "scope": "Portable preferences encode/decode, candidate first/last, main setup page smoke. Registry persistence and interactive TSF require lab validation."
+    },
+    {
+      "id": "TEST-ALPHA-PACKAGE",
+      "status": "IMPLEMENTED_NOT_RUN",
+      "scope": "Test-AlphaPackage.ps1 validates clean/prepared package inventory, source pins, build identity, reparse points and SHA256; CI invokes both modes."
+    },
+    {
+      "id": "TEST-TSF-INTERACTIVE-EXPANDED",
+      "status": "IMPLEMENTED_NOT_RUN",
+      "scope": "Expanded isolated desktop verifier covers profile enable/restore, process-scoped activation, Up/Down/Home/End, exact commits, Ctrl+Shift+F12, Ctrl+Z/F2 pass-through, password and focus. CI prepares zh-CN; actual result is PASS or BLOCKED."
     }
   ],
   "evidenceLevel": "9d4f2a2 Windows 13/13, 14/14, 16/16 passed; Alpha preparation and rollback pending CI; active desktop NOT_RUN."

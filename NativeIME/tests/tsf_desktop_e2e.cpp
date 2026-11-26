@@ -1,12 +1,14 @@
 // Explicitly opt-in, disposable interactive Windows desktop only.
-// No registration, global input injection, default-profile change or text injection.
-// The actual installed experimental TSF service must handle every positive test key.
+// No registration, default-profile change or user text injection. The verifier
+// temporarily enables the test profile and uses thread-scoped keyboard state;
+// all user settings and the prior process profile are restored.
 #include <windows.h>
 #include <msctf.h>
 #include <wrl/client.h>
 #include <iostream>
 #include <string>
 #include <cwchar>
+#include <vector>
 #include "windows/tsf_edit.hpp"
 using Microsoft::WRL::ComPtr;
 namespace {
@@ -32,28 +34,87 @@ bool Ours(const TF_INPUTPROCESSORPROFILE& p){
 }
 struct Profile {
     ComPtr<ITfInputProcessorProfileMgr> mgr;
+    ComPtr<ITfInputProcessorProfiles> profiles;
     TF_INPUTPROCESSORPROFILE previous{};
-    bool restore=false;
+    bool restore=false,restoreEnabled=false;
     bool Active(){
         TF_INPUTPROCESSORPROFILE current{};
         return mgr&&mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD,&current)==S_OK&&Ours(current);
     }
     bool Select(){
+        if(!profiles||!mgr)return false;
+        BOOL enabled=FALSE;
+        if(profiles->IsEnabledLanguageProfile(kTip,kLanguage,kProfile,&enabled)!=S_OK)return false;
+        if(!enabled){
+            if(profiles->EnableLanguageProfile(kTip,kLanguage,kProfile,TRUE)!=S_OK)return false;
+            restoreEnabled=true;
+        }
         if(mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD,&previous)!=S_OK)return false;
         if(Ours(previous))return true;
-        // Do not enable profiles globally or defer activation until a language switch.
-        // Record even a partial activation attempt for cleanup.
         restore=true;
         return mgr->ActivateProfile(TF_PROFILETYPE_INPUTPROCESSOR,kLanguage,kTip,kProfile,nullptr,TF_IPPMF_FORPROCESS)==S_OK;
     }
     bool Restore(){
-        if(!restore)return true;
-        restore=false;
-        return mgr->ActivateProfile(previous.dwProfileType,previous.langid,previous.clsid,
-            previous.guidProfile,previous.hkl,TF_IPPMF_FORPROCESS)==S_OK;
+        bool ok=true;
+        if(restore){
+            restore=false;
+            ok=mgr->ActivateProfile(previous.dwProfileType,previous.langid,previous.clsid,
+                previous.guidProfile,previous.hkl,TF_IPPMF_FORPROCESS)==S_OK&&ok;
+        }
+        if(restoreEnabled){
+            restoreEnabled=false;
+            ok=profiles->EnableLanguageProfile(kTip,kLanguage,kProfile,FALSE)==S_OK&&ok;
+        }
+        return ok;
     }
-    ~Profile(){if(!Restore())std::cerr<<"Process profile restore failed\n";}
+    ~Profile(){if(!Restore())std::cerr<<"Process profile or enable-state restore failed\n";}
 };
+struct InputLocale {
+    HKL previous=GetKeyboardLayout(0);
+    HKL selected=nullptr;
+    bool Activate(){
+        selected=LoadKeyboardLayoutW(L"00000804",KLF_ACTIVATE|KLF_SETFORPROCESS);
+        if(!selected)return false;
+        ActivateKeyboardLayout(selected,KLF_SETFORPROCESS);
+        return PRIMARYLANGID(LOWORD(reinterpret_cast<ULONG_PTR>(GetKeyboardLayout(0))))==LANG_CHINESE;
+    }
+    ~InputLocale(){if(previous)ActivateKeyboardLayout(previous,KLF_SETFORPROCESS);}
+};
+struct PreferenceGuard {
+    HKEY key=nullptr;
+    DWORD oldType=0;
+    std::vector<BYTE> oldData;
+    bool hadValue=false,createdKey=false;
+    bool SetForTest(){
+        DWORD disposition=0;
+        if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\NativeIME\\Alpha",0,nullptr,0,
+            KEY_QUERY_VALUE|KEY_SET_VALUE,nullptr,&key,&disposition)!=ERROR_SUCCESS)return false;
+        createdKey=disposition==REG_CREATED_NEW_KEY;
+        DWORD size=0;
+        LONG query=RegQueryValueExW(key,L"InputPreferences",nullptr,&oldType,nullptr,&size);
+        if(query==ERROR_SUCCESS){
+            oldData.resize(size);
+            query=RegQueryValueExW(key,L"InputPreferences",nullptr,&oldType,oldData.data(),&size);
+            if(query!=ERROR_SUCCESS)return false;
+            hadValue=true;
+        }else if(query!=ERROR_FILE_NOT_FOUND)return false;
+        const DWORD value=3;
+        return RegSetValueExW(key,L"InputPreferences",0,REG_DWORD,
+            reinterpret_cast<const BYTE*>(&value),sizeof(value))==ERROR_SUCCESS;
+    }
+    bool Restore(){
+        if(!key)return true;
+        LONG status=hadValue
+            ?RegSetValueExW(key,L"InputPreferences",0,oldType,oldData.data(),static_cast<DWORD>(oldData.size()))
+            :RegDeleteValueW(key,L"InputPreferences");
+        if(!hadValue&&status==ERROR_FILE_NOT_FOUND)status=ERROR_SUCCESS;
+        RegCloseKey(key);key=nullptr;
+        if(createdKey)RegDeleteKeyW(HKEY_CURRENT_USER,L"Software\\NativeIME\\Alpha");
+        return status==ERROR_SUCCESS;
+    }
+    ~PreferenceGuard(){if(!Restore())std::cerr<<"Input preference restore failed\n";}
+};
+
 bool Pump(DWORD milliseconds){
     const auto deadline=GetTickCount64()+milliseconds;
     do{
@@ -75,7 +136,7 @@ std::wstring Text(HWND h){
     text.resize(copied>0?static_cast<std::size_t>(copied):0);
     return text;
 }
-struct PopupSearch { HWND owner; std::wstring preedit; HWND popup=nullptr; int index=0; };
+struct PopupSearch { HWND owner; std::wstring preedit; HWND popup=nullptr; int index=0,selected=0,count=0; };
 BOOL CALLBACK FindPopup(HWND h,LPARAM raw){
     auto& s=*reinterpret_cast<PopupSearch*>(raw);
     if(!IsWindowVisible(h)||GetWindow(h,GW_OWNER)!=s.owner||
@@ -86,9 +147,13 @@ BOOL CALLBACK FindPopup(HWND h,LPARAM raw){
     if(t.rfind(s.preedit+L"\r\n",0)!=0)return TRUE;
     s.popup=h;
     for(int i=1;i<=9;++i){
-        const auto suffix=std::to_wstring(i)+L" \u4f60\u597d";
+        const auto number=std::to_wstring(i)+L" ";
+        const bool selected=(t+L"\r\n").find(L"\r\n> "+number)!=std::wstring::npos;
+        const bool present=selected||(t+L"\r\n").find(L"\r\n  "+number)!=std::wstring::npos;
+        if(present){s.count=i;if(selected)s.selected=i;}
+        const auto suffix=number+L"\u4f60\u597d";
         if((t+L"\r\n").find(L"\r\n> "+suffix+L"\r\n")!=std::wstring::npos||
-           (t+L"\r\n").find(L"\r\n  "+suffix+L"\r\n")!=std::wstring::npos){s.index=i;break;}
+           (t+L"\r\n").find(L"\r\n  "+suffix+L"\r\n")!=std::wstring::npos)s.index=i;
     }
     return FALSE;
 }
@@ -129,6 +194,26 @@ struct Route {
         const LPARAM released=param|static_cast<LPARAM>(0xC0000000u);
         if(keys->TestKeyUp(key,released,&up)==S_OK&&up)keys->KeyUp(key,released,&up);
         return Pump(20)&&OwnFocus(root,edit);
+    }
+    bool Chord(HWND edit,WPARAM key,bool ctrl,bool shift,bool expected){
+        if(!OwnFocus(root,edit)||!profile.Active()||!CleanModifiers())return false;
+        BYTE original[256]{},changed[256]{};
+        if(!GetKeyboardState(original))return false;
+        for(unsigned i=0;i<256;++i)changed[i]=original[i];
+        if(ctrl)changed[VK_CONTROL]|=0x80;
+        if(shift)changed[VK_SHIFT]|=0x80;
+        if(!SetKeyboardState(changed))return false;
+        const LPARAM param=1|(static_cast<LPARAM>(MapVirtualKeyW(static_cast<UINT>(key),MAPVK_VK_TO_VSC))<<16);
+        BOOL eaten=FALSE;
+        HRESULT hr=keys->TestKeyDown(key,param,&eaten);
+        bool ok=hr==S_OK&&static_cast<bool>(eaten)==expected;
+        if(ok&&expected){
+            eaten=FALSE;hr=keys->KeyDown(key,param,&eaten);ok=hr==S_OK&&eaten;
+            BOOL up=FALSE;const LPARAM released=param|static_cast<LPARAM>(0xC0000000u);
+            if(keys->TestKeyUp(key,released,&up)==S_OK&&up)keys->KeyUp(key,released,&up);
+        }
+        const bool restored=SetKeyboardState(original)!=FALSE;
+        return ok&&restored&&Pump(20)&&OwnFocus(root,edit);
     }
     bool WaitReady(HWND edit){
         const auto deadline=GetTickCount64()+5000;
@@ -175,11 +260,19 @@ int Preflight(){
     if(FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(profiles.GetAddressOf()))))return Fail(4,"profile manager");
     LANGID language=0;BOOL enabled=FALSE;
     if(profiles->GetCurrentLanguage(&language)!=S_OK||language!=kLanguage)return Blocked("Simplified Chinese input language not active");
-    if(profiles->IsEnabledLanguageProfile(kTip,kLanguage,kProfile,&enabled)!=S_OK||!enabled)return Blocked("NativeIME profile not enabled");
-    std::cout<<"Desktop preconditions present (not an E2E pass)\n";return 0;
+    BSTR description=nullptr;
+    const HRESULT found=profiles->GetLanguageProfileDescription(kTip,kLanguage,kProfile,&description);
+    const bool registered=found==S_OK&&description&&SysStringLen(description)>0;
+    SysFreeString(description);
+    if(!registered)return Blocked("NativeIME TSF profile is not registered");
+    std::cout<<"Interactive desktop, Simplified Chinese locale and registered NativeIME profile found (not an E2E pass)\n";return 0;
 }
 int Verify(){
     Apartment com;if(FAILED(com.hr))return Fail(2,"COM initialization");
+    InputLocale locale;
+    if(!locale.Activate())return Blocked("Simplified Chinese 0804 keyboard layout unavailable in this isolated runner");
+    PreferenceGuard preferences;
+    if(!preferences.SetForTest())return Fail(22,"save and enable isolated test input preferences");
     ThreadManager thread;
     if(FAILED(CoCreateInstance(CLSID_TF_ThreadMgr,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(thread.mgr.GetAddressOf())))||
        thread.mgr->Activate(&thread.client)!=S_OK)return Fail(3,"real TSF thread manager activation");
@@ -187,11 +280,10 @@ int Verify(){
     Profile profile;
     if(FAILED(CoCreateInstance(CLSID_TF_InputProcessorProfiles,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(profiles.GetAddressOf())))||
        FAILED(profiles.As(&profile.mgr)))return Fail(4,"profile manager");
-    LANGID language=0;BOOL enabled=FALSE;
+    profile.profiles=profiles;
+    LANGID language=0;
     if(profiles->GetCurrentLanguage(&language)!=S_OK||language!=kLanguage)
-        return Blocked("select Simplified Chinese input language in the disposable VM first");
-    if(profiles->IsEnabledLanguageProfile(kTip,kLanguage,kProfile,&enabled)!=S_OK||!enabled)
-        return Blocked("register and enable the experimental NativeIME profile in the VM first");
+        return Blocked("Simplified Chinese input locale is not active in the test thread");
     Window root;
     root.h=CreateWindowExW(0,L"STATIC",L"NativeIME isolated TSF desktop verification",
         WS_OVERLAPPEDWINDOW,80,80,560,240,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
@@ -222,7 +314,17 @@ int Verify(){
             if(!Pump(25)||!OwnFocus(root.h,edit)||!profile.Active())return Fail(12,"focus lost before candidate");
             s=Popup(root.h,L"nihao");
         }while(!s.index&&GetTickCount64()<end);
-        if(!s.popup||!s.index)return Fail(13,"actual NativeIME popup lacks expected Chinese candidate");
+        if(!s.popup||!s.index||s.selected!=1||s.count<2)return Fail(13,"actual NativeIME popup lacks selected and alternative Chinese candidates");
+        if(round==0){
+            if(!route.Key(edit,VK_DOWN,true)||Popup(root.h,L"nihao").selected!=2)
+                return Fail(23,"Down did not move selection to the next candidate");
+            if(!route.Key(edit,VK_UP,true)||Popup(root.h,L"nihao").selected!=1)
+                return Fail(24,"Up did not restore the first candidate");
+            if(!route.Key(edit,VK_END,true)||Popup(root.h,L"nihao").selected!=s.count)
+                return Fail(25,"enabled End did not select the last candidate");
+            if(!route.Key(edit,VK_HOME,true)||Popup(root.h,L"nihao").selected!=1)
+                return Fail(26,"enabled Home did not select the first candidate");
+        }
         if(!route.Key(edit,L'0'+s.index,true)||Text(edit)!=prior+chinese||
            !route.ReadContext(prior+chinese)||Popup(root.h,L"nihao").popup)
             return Fail(14,"candidate selection, real TSF context or popup dismissal");
@@ -231,7 +333,13 @@ int Verify(){
     if(!route.Pinyin(edit)||!route.Key(edit,VK_BACK,true)||Text(edit)!=chinese+chinese+L"niha"||
        !route.Key(edit,VK_ESCAPE,true)||Text(edit)!=chinese+chinese)
         return Fail(15,"backspace / cancel preservation");
-    if(!route.Key(edit,VK_F2,false))return Fail(16,"unhandled host key was claimed");
+    if(!route.Chord(edit,VK_F12,true,true,true)||!route.Key(edit,'N',false))
+        return Fail(16,"Ctrl+Shift+F12 did not switch to English and pass ordinary letters through");
+    if(!route.Chord(edit,VK_F12,true,true,true)||!route.Key(edit,'N',true))
+        return Fail(27,"Ctrl+Shift+F12 did not switch back to Chinese");
+    if(!route.Chord(edit,'Z',true,false,false))
+        return Fail(28,"Ctrl+Z was intercepted instead of remaining a host shortcut");
+    if(!route.Key(edit,VK_F2,false))return Fail(29,"unhandled host key was claimed");
     SetFocus(password);if(!Pump(100)||!route.Key(password,'N',false)||Popup(root.h,L"nihao").popup)
         return Fail(17,"password control key or candidate protection");
     SetFocus(other);if(!Pump(100)||!route.WaitReady(other)||!route.Pinyin(other))
@@ -239,8 +347,9 @@ int Verify(){
     SetFocus(edit);if(!Pump(150)||Popup(root.h,L"nihao").popup)
         return Fail(19,"stale popup after focus switch");
     if(Text(edit)!=chinese+chinese)return Fail(20,"focus switch corrupted first control");
-    if(!profile.Restore())return Fail(21,"restore original process profile");
-    std::cout<<"PASS: registered active NativeIME, TSF keyboard routing, real candidates, two exact commits, edit session readback, cancel and focus checks.\n";
+    if(!profile.Restore())return Fail(21,"restore original process profile and enabled state");
+    if(!preferences.Restore())return Fail(30,"restore original per-user input preferences");
+    std::cout<<"PASS: process-scoped TSF activation, real popup and candidate navigation, two exact commits, edit-session readback, mode chord, host shortcut pass-through, cancel and focus protection.\n";
     return 0;
 }
 }
