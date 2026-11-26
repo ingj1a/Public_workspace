@@ -184,6 +184,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR cmd,int show){
     const bool smoke=cmd&&wcscmp(cmd,L"--ui-smoke")==0;
     const bool report=cmd&&wcscmp(cmd,L"--report-smoke")==0;
     if(report)return WriteDiagnosticsSmokeReport()?0:5;
+    if(cmd&&wcscmp(cmd,L"--report-capture-smoke")==0)return WriteDiagnosticsCaptureSmokeReport()?0:6;
     WNDCLASSW wc{};wc.lpfnWndProc=Proc;wc.hInstance=instance;wc.lpszClassName=L"NativeIME.Main";
     wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hbrBackground=GetSysColorBrush(COLOR_WINDOW);
     if(!RegisterClassW(&wc))return 1;

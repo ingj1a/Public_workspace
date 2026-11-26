@@ -5,6 +5,7 @@ namespace nativeime::win {
 HWND CreateDiagnosticsPage(HWND parent,HINSTANCE instance);
 bool CloseDiagnosticsPage() noexcept;
 bool WriteDiagnosticsSmokeReport() noexcept;
+bool WriteDiagnosticsCaptureSmokeReport() noexcept;
 // Borrowed job owned by the main window, valid only on its UI thread.
 void SetDiagnosticsEngineJob(HANDLE job) noexcept;
 }

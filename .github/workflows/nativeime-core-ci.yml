@@ -26,23 +26,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare isolated Simplified Chinese input locale (Windows runner only)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $cap = Get-WindowsCapability -Online -Name 'Language.Basic~~~zh-CN~0.0.1.0'
-          if ($cap.State -ne 'Installed') {
-            $result = Add-WindowsCapability -Online -Name 'Language.Basic~~~zh-CN~0.0.1.0'
-            if ($result.RestartNeeded) { throw 'Chinese input capability requires a runner restart.' }
-          }
-          $list = New-WinUserLanguageList -Language 'zh-CN'
-          $list[0].InputMethodTips.Clear()
-          $list[0].InputMethodTips.Add('0804:00000804')
-          $list.Add('en-US')
-          Set-WinUserLanguageList -LanguageList $list -Force
-          Set-WinDefaultInputMethodOverride -InputTip '0804:00000804'
-          $active = Get-WinUserLanguageList
-          if ($active.Count -lt 1 -or $active[0].LanguageTag -ne 'zh-CN') { throw 'Chinese input locale was not applied to the ephemeral runner.' }
       - name: Parse all Alpha PowerShell sources before deployment
         if: runner.os == 'Windows'
         shell: pwsh
@@ -128,6 +111,9 @@ jobs:
       - name: Validate actual NativeIME report (Windows)
         if: runner.os == 'Windows'
         run: python -c "import zipfile,json,csv,io; z=zipfile.ZipFile('NativeIME/build/report-smoke/nativeime-report-smoke.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; r=json.loads(z.read('summary.json')); assert r['capture']=='aggregate_only'; assert r['self_test']['engine']==-1; assert set(r['environment'])=={'runtime','schema','service','registered_build','profile_enabled','chinese_language'}; assert all(v in (-1,0,1) for v in r['environment'].values()); assert r['fixed_quality_probe']['correction_total']==0; assert all(v==0 for v in r['events'].values()); assert len(list(csv.reader(io.StringIO(z.read('performance.csv').decode()))))==1"
+      - name: Verify populated production diagnostic report (Windows)
+        if: runner.os == 'Windows'
+        run: python -c "import zipfile,json,csv,io; z=zipfile.ZipFile('NativeIME/build/report-smoke/nativeime-report-capture-smoke.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; r=json.loads(z.read('summary.json')); e=r['events']; assert e['commit']==2 and e['ipc_ok']==1 and e['ipc_total_ms']==7 and e['candidate_latency_count']==1 and e['candidate_21_30_ms']==1; rows=list(csv.DictReader(io.StringIO(z.read('performance.csv').decode()))); assert len(rows)>=2 and all(int(x['ui_working_set_bytes'])>0 for x in rows); assert rows[-1]['ui_cpu_one_core_pct']!=''"
       - name: Upload native input lab (not an installer)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -193,19 +179,14 @@ jobs:
           try {
             & "$lab/Install-Alpha.ps1" -Action Install -IsolatedVm
             if ($LASTEXITCODE -ne 0) { throw "Alpha registration failed: $LASTEXITCODE" }
-            & "$lab/NativeIME.TsfDesktopE2E.exe" --preflight-only
-            $preflight = $LASTEXITCODE
-            if ($preflight -eq 77) {
-              Write-Host "BLOCKED: interactive TSF preconditions unavailable; no desktop E2E pass claimed."
-            } elseif ($preflight -ne 0) {
-              throw "Desktop preflight failed: $preflight"
-            } else {
-              & "$lab/NativeIME.Session.exe" --desktop-check --shared "$lab/shared" --user "$env:RUNNER_TEMP/alpha-desktop-user" --rime-dll "$lab/runtime/rime.dll"
-              $desktop = $LASTEXITCODE
-              if ($desktop -eq 77) { Write-Host "BLOCKED: process-scoped TSF desktop verification preconditions unavailable." }
-              elseif ($desktop -ne 0) { throw "Actual TSF desktop verification failed: $desktop" }
-              else { Write-Host "PASS: actual TSF desktop candidate, key, mode and focus verification." }
-            }
+            # Do not download a language capability or change the default input method.
+            # Only the explicitly disposable CI route may try a locally available locale.
+            $installed = Join-Path $env:ProgramFiles 'NativeIME-AlphaLab'
+            & "$installed/NativeIME.Session.exe" --ci-desktop-check --shared "$installed/shared" --user "$env:RUNNER_TEMP/alpha-desktop-user" --rime-dll "$installed/runtime/rime.dll"
+            $desktop = $LASTEXITCODE
+            if ($desktop -eq 77) { Write-Host "BLOCKED: interactive desktop or Chinese locale unavailable; no actual TSF pass claimed." }
+            elseif ($desktop -ne 0) { throw "Actual TSF desktop verification failed: $desktop" }
+            else { Write-Host "PASS: installed-path real TSF candidate, key, mode and focus verification." }
           } finally {
             $installed = Join-Path $env:ProgramFiles 'NativeIME-AlphaLab'
             if (Test-Path "$installed/alpha-owned.json") {
@@ -217,7 +198,7 @@ jobs:
               if (-not (Test-Path "$installed/NativeIME.exe")) { throw "Protected files were unexpectedly removed during rollback." }
             }
           }
-          Write-Host "Alpha preparation, package integrity, real engine, COM registration and unregister/rollback verified."
+          Write-Host "Alpha preparation, package integrity, real engine, COM registration and unregister/rollback verified. Desktop result is separate."
       - name: Upload first-party experimental desktop candidate
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4

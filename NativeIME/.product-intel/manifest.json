@@ -162,8 +162,8 @@
     {
       "id": "TEST-MAIN-UI",
       "status": "PASS",
-      "scope": "In-process navigation and child ownership passed; interactive GUI not verified.",
-      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45757411697/job/139699220614"
+      "scope": "6fbfd01: actual child page ownership, home, diagnostics and setup navigation passed; interactive GUI not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
     },
     {
       "id": "TEST-MODE-SWITCH",
@@ -174,8 +174,8 @@
     {
       "id": "TEST-DIAG-ZIP",
       "status": "PARTIAL",
-      "scope": "ZIP fixture and independent Python zipfile validation passed; actual UI export not verified.",
-      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45757411697/job/139699220614"
+      "scope": "6fbfd01: actual product empty-report ZIP serializer independently validated; new populated capture smoke pending; GUI save dialog not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
     },
     {
       "id": "TEST-PROFESSIONAL",
@@ -197,25 +197,27 @@
     },
     {
       "id": "TEST-ALPHA-PREPARE",
-      "status": "PARTIAL",
-      "scope": "3e681a2: manifest, six downloads, hash validation, preparation, real engine start passed; install script parser failure; repaired source and added early parser gate; new deployment not run.",
-      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45775596954/job/139758381156"
+      "status": "PASS",
+      "scope": "6fbfd01: all six pinned sources, preparation, real engine start, actual installation and registration rollback passed on disposable Windows CI; files intentionally retained.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
     },
     {
       "id": "TEST-INPUT-PREFERENCES",
-      "status": "NOT_RUN",
-      "scope": "Portable preferences encode/decode, candidate first/last, main setup page smoke. Registry persistence and interactive TSF require lab validation."
+      "status": "PARTIAL",
+      "scope": "6fbfd01: preference encoding, candidate first/last, main setup page smoke passed; real TSF preference behavior not yet run.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
     },
     {
       "id": "TEST-ALPHA-PACKAGE",
-      "status": "IMPLEMENTED_NOT_RUN",
-      "scope": "Test-AlphaPackage.ps1 validates clean/prepared package inventory, source pins, build identity, reparse points and SHA256; CI invokes both modes."
+      "status": "PARTIAL",
+      "scope": "Independent downloaded 6fbfd01 PR artifact SHA256 matched GitHub; ZIP CRC, 7 binary manifest hashes and PE x64 verified. New prepared inventory validator not run.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/artifacts/15097265666"
     },
     {
       "id": "TEST-TSF-INTERACTIVE-EXPANDED",
-      "status": "IMPLEMENTED_NOT_RUN",
-      "scope": "Expanded isolated desktop verifier covers profile enable/restore, process-scoped activation, Up/Down/Home/End, exact commits, Ctrl+Shift+F12, Ctrl+Z/F2 pass-through, password and focus. CI prepares zh-CN; actual result is PASS or BLOCKED."
+      "status": "NOT_RUN",
+      "scope": "Installed-path CI route corrected; manual verifier no longer changes saved preferences or locale; new test pending."
     }
   ],
-  "evidenceLevel": "9d4f2a2 Windows 13/13, 14/14, 16/16 passed; Alpha preparation and rollback pending CI; active desktop NOT_RUN."
+  "evidenceLevel": "6fbfd01 Windows 13/13, 14/14, 16/16 passed and deployment/rollback passed; independent ZIP/PE inspection passed. New installed-path TSF route and populated report pending; real desktop not accepted."
 }

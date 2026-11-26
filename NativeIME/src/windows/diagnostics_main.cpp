@@ -241,6 +241,26 @@ bool WriteDiagnosticsSmokeReport() noexcept {
         return WriteReport(path);
     }catch(...){return false;}
 }
+bool WriteDiagnosticsCaptureSmokeReport() noexcept {
+    // Explicit isolated CI fixture. Use the real shared capture, sampler and ZIP serializer.
+    // Fixed numeric events, never user text. Refuse existing reports/sessions.
+    try{
+        const auto path=std::filesystem::current_path()/L"nativeime-report-capture-smoke.zip";
+        if(std::filesystem::exists(path)||!capture.Start())return false;
+        samples.clear();captureStarted=GetTickCount64();lastSample=0;lastCpu=0;
+        d::Writer writer;
+        writer.Record(d::Event::Commit,2);
+        writer.RecordIpc(true,7);
+        writer.RecordCandidateLatency(24);
+        SamplePerformance();Sleep(1050);SamplePerformance();
+        if(!capture.Stop())return false;
+        auto snapshot=capture.Read();
+        if(snapshot[static_cast<unsigned>(d::Event::Commit)]!=2||
+           snapshot[static_cast<unsigned>(d::Event::CandidateLatencyCount)]!=1||
+           samples.size()<2)return false;
+        return WriteReport(path);
+    }catch(...){capture.Stop();return false;}
+}
 bool CloseDiagnosticsPage() noexcept {
     if(verifier||probe.valid())return false;
     return capture.Stop();

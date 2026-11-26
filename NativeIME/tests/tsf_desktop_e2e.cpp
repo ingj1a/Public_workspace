@@ -1,7 +1,7 @@
 // Explicitly opt-in, disposable interactive Windows desktop only.
-// No registration, default-profile change or user text injection. The verifier
-// temporarily enables the test profile and uses thread-scoped keyboard state;
-// all user settings and the prior process profile are restored.
+// Normal mode never changes input settings, profile enablement or locale.
+// Explicit disposable CI mode may temporarily activate a locale and enable our
+// registered profile; it attempts restoration. No default-profile changes.
 #include <windows.h>
 #include <msctf.h>
 #include <wrl/client.h>
@@ -9,6 +9,8 @@
 #include <string>
 #include <cwchar>
 #include <vector>
+#include <oleauto.h>
+#include "windows/input_preferences.hpp"
 #include "windows/tsf_edit.hpp"
 using Microsoft::WRL::ComPtr;
 namespace {
@@ -41,11 +43,12 @@ struct Profile {
         TF_INPUTPROCESSORPROFILE current{};
         return mgr&&mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD,&current)==S_OK&&Ours(current);
     }
-    bool Select(){
+    bool Select(bool disposableCI){
         if(!profiles||!mgr)return false;
         BOOL enabled=FALSE;
         if(profiles->IsEnabledLanguageProfile(kTip,kLanguage,kProfile,&enabled)!=S_OK)return false;
         if(!enabled){
+            if(!disposableCI)return false;
             if(profiles->EnableLanguageProfile(kTip,kLanguage,kProfile,TRUE)!=S_OK)return false;
             restoreEnabled=true;
         }
@@ -78,41 +81,7 @@ struct InputLocale {
         ActivateKeyboardLayout(selected,KLF_SETFORPROCESS);
         return PRIMARYLANGID(LOWORD(reinterpret_cast<ULONG_PTR>(GetKeyboardLayout(0))))==LANG_CHINESE;
     }
-    ~InputLocale(){if(previous)ActivateKeyboardLayout(previous,KLF_SETFORPROCESS);}
-};
-struct PreferenceGuard {
-    HKEY key=nullptr;
-    DWORD oldType=0;
-    std::vector<BYTE> oldData;
-    bool hadValue=false,createdKey=false;
-    bool SetForTest(){
-        DWORD disposition=0;
-        if(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\NativeIME\\Alpha",0,nullptr,0,
-            KEY_QUERY_VALUE|KEY_SET_VALUE,nullptr,&key,&disposition)!=ERROR_SUCCESS)return false;
-        createdKey=disposition==REG_CREATED_NEW_KEY;
-        DWORD size=0;
-        LONG query=RegQueryValueExW(key,L"InputPreferences",nullptr,&oldType,nullptr,&size);
-        if(query==ERROR_SUCCESS){
-            oldData.resize(size);
-            query=RegQueryValueExW(key,L"InputPreferences",nullptr,&oldType,oldData.data(),&size);
-            if(query!=ERROR_SUCCESS)return false;
-            hadValue=true;
-        }else if(query!=ERROR_FILE_NOT_FOUND)return false;
-        const DWORD value=3;
-        return RegSetValueExW(key,L"InputPreferences",0,REG_DWORD,
-            reinterpret_cast<const BYTE*>(&value),sizeof(value))==ERROR_SUCCESS;
-    }
-    bool Restore(){
-        if(!key)return true;
-        LONG status=hadValue
-            ?RegSetValueExW(key,L"InputPreferences",0,oldType,oldData.data(),static_cast<DWORD>(oldData.size()))
-            :RegDeleteValueW(key,L"InputPreferences");
-        if(!hadValue&&status==ERROR_FILE_NOT_FOUND)status=ERROR_SUCCESS;
-        RegCloseKey(key);key=nullptr;
-        if(createdKey)RegDeleteKeyW(HKEY_CURRENT_USER,L"Software\\NativeIME\\Alpha");
-        return status==ERROR_SUCCESS;
-    }
-    ~PreferenceGuard(){if(!Restore())std::cerr<<"Input preference restore failed\n";}
+    ~InputLocale(){if(selected&&previous)ActivateKeyboardLayout(previous,KLF_SETFORPROCESS);}
 };
 
 bool Pump(DWORD milliseconds){
@@ -267,12 +236,11 @@ int Preflight(){
     if(!registered)return Blocked("NativeIME TSF profile is not registered");
     std::cout<<"Interactive desktop, Simplified Chinese locale and registered NativeIME profile found (not an E2E pass)\n";return 0;
 }
-int Verify(){
+int Verify(bool disposableCI){
     Apartment com;if(FAILED(com.hr))return Fail(2,"COM initialization");
     InputLocale locale;
-    if(!locale.Activate())return Blocked("Simplified Chinese 0804 keyboard layout unavailable in this isolated runner");
-    PreferenceGuard preferences;
-    if(!preferences.SetForTest())return Fail(22,"save and enable isolated test input preferences");
+    if(disposableCI&&!locale.Activate())return Blocked("Simplified Chinese 0804 keyboard layout unavailable in this isolated runner");
+    const auto preferences=nativeime::win::LoadInputPreferences();
     ThreadManager thread;
     if(FAILED(CoCreateInstance(CLSID_TF_ThreadMgr,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(thread.mgr.GetAddressOf())))||
        thread.mgr->Activate(&thread.client)!=S_OK)return Fail(3,"real TSF thread manager activation");
@@ -296,7 +264,7 @@ int Verify(){
     if(!edit||!password||!other)return Fail(6,"create EDIT controls");
     ShowWindow(root.h,SW_SHOW);SetForegroundWindow(root.h);SetFocus(edit);
     if(!Pump(150)||!OwnFocus(root.h,edit)||!CleanModifiers())return Blocked("interactive foreground desktop and clean modifiers required");
-    if(!profile.Select())return Blocked("process-scoped profile activation failed; check registered profile and language");
+    if(!profile.Select(disposableCI))return Blocked("process-scoped profile activation failed; check registered profile and language");
     if(!Pump(200)||!profile.Active())return Fail(7,"NativeIME not active after process-scoped activation");
     Route route{root.h,profile,thread};
     if(!route.Init())return Fail(8,"TSF keystroke manager");
@@ -320,10 +288,13 @@ int Verify(){
                 return Fail(23,"Down did not move selection to the next candidate");
             if(!route.Key(edit,VK_UP,true)||Popup(root.h,L"nihao").selected!=1)
                 return Fail(24,"Up did not restore the first candidate");
-            if(!route.Key(edit,VK_END,true)||Popup(root.h,L"nihao").selected!=s.count)
-                return Fail(25,"enabled End did not select the last candidate");
-            if(!route.Key(edit,VK_HOME,true)||Popup(root.h,L"nihao").selected!=1)
-                return Fail(26,"enabled Home did not select the first candidate");
+            if(preferences.candidateEdges){
+                if(!route.Key(edit,VK_END,true)||Popup(root.h,L"nihao").selected!=s.count)
+                    return Fail(25,"enabled End did not select the last candidate");
+                if(!route.Key(edit,VK_HOME,true)||Popup(root.h,L"nihao").selected!=1)
+                    return Fail(26,"enabled Home did not select the first candidate");
+            }else if(!route.Key(edit,VK_END,false)||!route.Key(edit,VK_HOME,false))
+                return Fail(25,"disabled Home/End should pass through to host");
         }
         if(!route.Key(edit,L'0'+s.index,true)||Text(edit)!=prior+chinese||
            !route.ReadContext(prior+chinese)||Popup(root.h,L"nihao").popup)
@@ -333,10 +304,13 @@ int Verify(){
     if(!route.Pinyin(edit)||!route.Key(edit,VK_BACK,true)||Text(edit)!=chinese+chinese+L"niha"||
        !route.Key(edit,VK_ESCAPE,true)||Text(edit)!=chinese+chinese)
         return Fail(15,"backspace / cancel preservation");
-    if(!route.Chord(edit,VK_F12,true,true,true)||!route.Key(edit,'N',false))
-        return Fail(16,"Ctrl+Shift+F12 did not switch to English and pass ordinary letters through");
-    if(!route.Chord(edit,VK_F12,true,true,true)||!route.Key(edit,'N',true))
-        return Fail(27,"Ctrl+Shift+F12 did not switch back to Chinese");
+    if(preferences.modeShortcut){
+        if(!route.Chord(edit,VK_F12,true,true,true)||!route.Key(edit,'N',false))
+            return Fail(16,"Ctrl+Shift+F12 did not switch to English and pass ordinary letters through");
+        if(!route.Chord(edit,VK_F12,true,true,true)||!route.WaitReady(edit))
+            return Fail(27,"Ctrl+Shift+F12 did not switch back to Chinese");
+    }else if(!route.Chord(edit,VK_F12,true,true,false))
+        return Fail(16,"disabled mode shortcut should pass through");
     if(!route.Chord(edit,'Z',true,false,false))
         return Fail(28,"Ctrl+Z was intercepted instead of remaining a host shortcut");
     if(!route.Key(edit,VK_F2,false))return Fail(29,"unhandled host key was claimed");
@@ -348,14 +322,15 @@ int Verify(){
         return Fail(19,"stale popup after focus switch");
     if(Text(edit)!=chinese+chinese)return Fail(20,"focus switch corrupted first control");
     if(!profile.Restore())return Fail(21,"restore original process profile and enabled state");
-    if(!preferences.Restore())return Fail(30,"restore original per-user input preferences");
+    std::cout<<"Configured shortcut="<<preferences.modeShortcut<<", candidate edges="<<preferences.candidateEdges<<" (settings were not modified)\n";
     std::cout<<"PASS: process-scoped TSF activation, real popup and candidate navigation, two exact commits, edit-session readback, mode chord, host shortcut pass-through, cancel and focus protection.\n";
     return 0;
 }
 }
 int wmain(int argc,wchar_t** argv){
     if(argc==2&&wcscmp(argv[1],L"--preflight-only")==0)return Preflight();
-    if(argc!=2||wcscmp(argv[1],L"--isolated-desktop")!=0)
-        return Blocked("requires explicit --isolated-desktop on a disposable interactive Windows VM");
-    return Verify();
+    if(argc!=2)return Blocked("requires explicit isolated desktop verification");
+    if(wcscmp(argv[1],L"--isolated-desktop")==0)return Verify(false);
+    if(wcscmp(argv[1],L"--ci-isolated-desktop")==0)return Verify(true);
+    return Blocked("requires explicit isolated desktop verification");
 }

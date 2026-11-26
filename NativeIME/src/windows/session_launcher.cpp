@@ -85,8 +85,8 @@ bool OwnService(const Session& session){
     BOOL owned=FALSE;
     return process.value&&IsProcessInJob(process.value,session.job.value,&owned)&&owned;
 }
-int Desktop(const std::wstring& exe,HANDLE cancel,HANDLE supervisor){
-    auto cmd=Quote(exe)+L" --isolated-desktop";
+int Desktop(const std::wstring& exe,HANDLE cancel,HANDLE supervisor,bool disposableCI){
+    auto cmd=Quote(exe)+(disposableCI?L" --ci-isolated-desktop":L" --isolated-desktop");
     STARTUPINFOW si{sizeof(si)};PROCESS_INFORMATION pi{};
     if(!CreateProcessW(exe.c_str(),cmd.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&si,&pi))return 10;
     Handle child(pi.hProcess),thread(pi.hThread);
@@ -106,7 +106,7 @@ int wmain(int argc,wchar_t** argv){
     try{
         if(argc!=8&&argc!=10){std::cerr<<"Usage: NativeIME.Session.exe --engine-only-check|--run|--desktop-check --shared ABS --user ABS --rime-dll ABS\n";return 1;}
         std::wstring mode=argv[1],shared=Arg(argc,argv,L"--shared"),user=Arg(argc,argv,L"--user"),dll=Arg(argc,argv,L"--rime-dll");
-        if(mode!=L"--engine-only-check"&&mode!=L"--run"&&mode!=L"--desktop-check")return 1;
+        if(mode!=L"--engine-only-check"&&mode!=L"--run"&&mode!=L"--desktop-check"&&mode!=L"--ci-desktop-check")return 1;
         if(!SafePath(shared)||!SafePath(user)||!SafePath(dll)||!std::filesystem::is_directory(shared)||
            !std::filesystem::is_regular_file(dll))return 2;
         if(std::filesystem::weakly_canonical(shared)==std::filesystem::weakly_canonical(user))return 2;
@@ -115,7 +115,7 @@ int wmain(int argc,wchar_t** argv){
         auto supervisor=(dir/L"NativeIME.EngineSupervisor.exe").wstring(),engine=(dir/L"NativeIME.EngineService.exe").wstring(),
              desktop=(dir/L"NativeIME.TsfDesktopE2E.exe").wstring();
         if(!std::filesystem::is_regular_file(supervisor)||!std::filesystem::is_regular_file(engine)||
-           (mode==L"--desktop-check"&&!std::filesystem::is_regular_file(desktop)))return 3;
+           ((mode==L"--desktop-check"||mode==L"--ci-desktop-check")&&!std::filesystem::is_regular_file(desktop)))return 3;
         // Never adopt or terminate a pre-existing service.
         win::EngineClient client(engine);core::ipc::Response response;
         if(client.Query(L"nihao",response,500)){std::cerr<<"Existing service detected; not starting a second session.\n";return 4;}
@@ -134,7 +134,7 @@ int wmain(int argc,wchar_t** argv){
             }
             if(result==0){
                 std::cout<<"NativeIME session ready: real Rime candidate returned by owned engine\n";
-                if(mode==L"--desktop-check")result=Desktop(desktop,cancel.value,session.supervisor.value);
+                if(mode==L"--desktop-check"||mode==L"--ci-desktop-check")result=Desktop(desktop,cancel.value,session.supervisor.value,mode==L"--ci-desktop-check");
                 else if(mode==L"--run"){
                     HANDLE waits[]={cancel.value,session.supervisor.value};
                     if(WaitForMultipleObjects(2,waits,FALSE,INFINITE)!=WAIT_OBJECT_0)result=7;
