@@ -1,0 +1,21 @@
+#pragma once
+#include "core/pinyin_engine.hpp"
+#include <memory>
+#include <string>
+namespace nativeime::core {
+// Single owner per process, invoked on its creating thread, outside TSF callbacks.
+// No system Rime configuration is modified; supply an isolated user directory.
+class RimeProvider {
+public:
+    RimeProvider(std::string sharedDir,std::string userDir,std::string schema,
+                 std::wstring modulePath = {});
+    ~RimeProvider();
+    RimeProvider(const RimeProvider&)=delete;
+    RimeProvider& operator=(const RimeProvider&)=delete;
+    QueryResult Query(const std::wstring& input);
+private:
+    QueryResult QueryExact(const std::wstring& input,const std::wstring& target = {});
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+}

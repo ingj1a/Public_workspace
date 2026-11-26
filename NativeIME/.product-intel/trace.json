@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "phase": "implementation",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "design": "DES-001",
+      "flow": "FLOW-001",
+      "modules": [
+        "windows-tsf"
+      ],
+      "tests": [
+        "TEST-TSF-001",
+        "TEST-DESKTOP-ROUTE"
+      ],
+      "evidence": [
+        "https://github.com/ingj1a/Public_workspace/actions/runs/45741739491/job/139648142925"
+      ]
+    },
+    {
+      "id": "REQ-002",
+      "design": "DES-001",
+      "flow": "FLOW-001",
+      "modules": [
+        "windows-tsf",
+        "pinyin-core"
+      ],
+      "tests": [
+        "TEST-TSF-002",
+        "TEST-CORE-001",
+        "TEST-DESKTOP-ROUTE"
+      ],
+      "evidence": [
+        "NativeIME/tests/core_tests.cpp"
+      ]
+    },
+    {
+      "id": "REQ-003",
+      "design": "DES-001",
+      "flow": "FLOW-001",
+      "modules": [
+        "pinyin-core",
+        "dictionary"
+      ],
+      "tests": [
+        "TEST-CORE-001",
+        "TEST-PROFESSIONAL",
+        "TEST-CORRECTION"
+      ],
+      "evidence": [
+        "NativeIME/tests/core_tests.cpp"
+      ]
+    },
+    {
+      "id": "REQ-004",
+      "design": "DES-001",
+      "flow": "FLOW-002",
+      "modules": [
+        "windows-tsf",
+        "app-context"
+      ],
+      "tests": [
+        "TEST-TSF-003",
+        "TEST-MODE-SWITCH"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "REQ-005",
+      "design": "DES-001",
+      "flow": "FLOW-001",
+      "modules": [
+        "windows-tsf"
+      ],
+      "tests": [
+        "TEST-TSF-004",
+        "TEST-DESKTOP-ROUTE"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "REQ-006",
+      "design": "DES-001",
+      "flow": "FLOW-001",
+      "modules": [
+        "windows-tsf",
+        "engine-ipc",
+        "engine-supervisor"
+      ],
+      "tests": [
+        "TEST-TSF-005",
+        "TEST-IPC-E2E",
+        "TEST-SUPERVISOR"
+      ],
+      "evidence": [
+        "https://github.com/ingj1a/Public_workspace/actions/runs/45739769886/job/139641707741",
+        "https://github.com/ingj1a/Public_workspace/actions/runs/45747247257/job/139666176684"
+      ]
+    },
+    {
+      "id": "REQ-007",
+      "design": "DES-001",
+      "flow": "FLOW-001",
+      "modules": [
+        "pinyin-core"
+      ],
+      "tests": [
+        "TEST-CORE-001"
+      ],
+      "evidence": [
+        "NativeIME/tests/core_tests.cpp"
+      ]
+    }
+  ]
+}

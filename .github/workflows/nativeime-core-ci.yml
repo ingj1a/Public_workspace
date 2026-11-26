@@ -1,0 +1,230 @@
+name: NativeIME Core CI
+
+on:
+  # Feature branches use their PR build, not a second identical push build.
+  # Manual dispatch remains available for branches without an open PR.
+  push:
+    branches: [main, master]
+    paths:
+      - "NativeIME/**"
+      - ".github/workflows/nativeime-core-ci.yml"
+  pull_request:
+    paths:
+      - "NativeIME/**"
+      - ".github/workflows/nativeime-core-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nativeime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all Alpha PowerShell sources before deployment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem NativeIME/tools -Filter '*.ps1' | ForEach-Object {
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count) { throw "PowerShell parse failure in $($_.Name): $errors" }
+          }
+      - name: Prepare official librime runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "nativeime-rime"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $main = Join-Path $root "rime-msvc-x64.7z"
+          $deps = Join-Path $root "rime-deps-msvc-x64.7z"
+          Invoke-WebRequest "https://github.com/rime/librime/releases/download/1.13.1/rime-1c23358-Windows-msvc-x64.7z" -OutFile $main
+          Invoke-WebRequest "https://github.com/rime/librime/releases/download/1.13.1/rime-deps-1c23358-Windows-msvc-x64.7z" -OutFile $deps
+          $seven = (Get-Command 7z -ErrorAction Stop).Source
+          & $seven x $main "-o$root\main" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Rime archive extraction failed" }
+          & $seven x $deps "-o$root\deps" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Dependency archive extraction failed" }
+          $dll = Get-ChildItem $root -Recurse -Filter rime.dll | Select-Object -First 1
+          if (-not $dll) { throw "Official librime 1.13.1 rime.dll not found in release assets" }
+          # Stage the official x64 release and its dependencies together. The loader
+          # intentionally does not search arbitrary PATH or the working directory.
+          $runtime = Join-Path $root "runtime"
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          Copy-Item $dll.FullName "$runtime\rime.dll"
+          Get-ChildItem "$root\main","$root\deps" -Recurse -File -Filter *.dll | ForEach-Object {
+            $dest = Join-Path $runtime $_.Name
+            if (Test-Path $dest) {
+              if ((Get-FileHash $dest).Hash -ne (Get-FileHash $_.FullName).Hash) { throw "Conflicting DLL: $($_.Name)" }
+            } else { Copy-Item $_.FullName $dest }
+          }
+          Get-ChildItem $runtime -File | Select-Object Name,Length | Format-Table
+          "NATIVEIME_RIME_DLL=$runtime\rime.dll" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "NATIVEIME_RIME_RUNTIME_DIR=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "NATIVEIME_RIME_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Checkout pinned Rime prelude data (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/checkout@v4
+        with:
+          repository: rime/rime-prelude
+          ref: 082425ea0684bca36474415d4a0e8db9b016487e
+          path: NativeIME/build-rime-shared
+      - name: Assemble pinned Luna Pinyin data (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $shared = "NativeIME/build-rime-shared"
+          git clone https://github.com/rime/rime-luna-pinyin.git "$env:RUNNER_TEMP\luna"
+          git -C "$env:RUNNER_TEMP\luna" checkout 84685a7e7793e43278ca29368977b79d74d37a03
+          if ($LASTEXITCODE -ne 0) { throw "Luna pin checkout failed" }
+          Copy-Item "$env:RUNNER_TEMP\luna\*.yaml" $shared -Force
+          Copy-Item "$env:RUNNER_TEMP\luna\*.dict.yaml" $shared -Force
+          git clone https://github.com/rime/rime-stroke.git "$env:RUNNER_TEMP\stroke"
+          git -C "$env:RUNNER_TEMP\stroke" checkout 1e8fff9b9494ddec23b0cbc526bcfd8171a6fd48
+          if ($LASTEXITCODE -ne 0) { throw "Stroke pin checkout failed" }
+          Copy-Item "$env:RUNNER_TEMP\stroke\*.yaml" $shared -Force
+          Copy-Item "$env:RUNNER_TEMP\stroke\*.dict.yaml" $shared -Force
+          git clone https://github.com/rime/rime-essay.git "$env:RUNNER_TEMP\essay"
+          if ($LASTEXITCODE -ne 0) { throw "Essay checkout failed" }
+          git -C "$env:RUNNER_TEMP\essay" checkout d95eeae056df429ecf993038c325a216f0b28c5b
+          if ($LASTEXITCODE -ne 0) { throw "Essay pin checkout failed" }
+          Copy-Item "$env:RUNNER_TEMP\essay\essay.txt" $shared -Force
+          $opencc = Get-ChildItem "$env:NATIVEIME_RIME_ROOT" -Recurse -Directory | Where-Object { $_.Name -eq "opencc" } | Select-Object -First 1
+          if (-not $opencc) { throw "OpenCC conversion data missing from release archives" }
+          Copy-Item $opencc.FullName "$shared\opencc" -Recurse -Force
+      - name: Configure
+        run: cmake -S NativeIME -B NativeIME/build -DCMAKE_BUILD_TYPE=Release
+      - name: Configure real Rime on Windows
+        if: runner.os == 'Windows'
+        run: cmake -S NativeIME -B NativeIME/build-rime-win -A x64 -DNATIVEIME_WITH_RIME=ON "-DNATIVEIME_RIME_DATA_DIR=$env:GITHUB_WORKSPACE/NativeIME/build-rime-shared" "-DNATIVEIME_RIME_RUNTIME_DLL=$env:NATIVEIME_RIME_DLL"
+      - name: Build
+        run: cmake --build NativeIME/build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir NativeIME/build -C Release --output-on-failure
+      - name: Verify diagnostic ZIP with independent standard-library reader
+        run: python -c "import zipfile,json; z=zipfile.ZipFile('NativeIME/build/diagnostic-fixture.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; assert json.loads(z.read('summary.json'))['schema']==2"
+      - name: Validate actual NativeIME report (Windows)
+        if: runner.os == 'Windows'
+        run: python -c "import zipfile,json,csv,io; z=zipfile.ZipFile('NativeIME/build/report-smoke/nativeime-report-smoke.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; r=json.loads(z.read('summary.json')); assert r['capture']=='aggregate_only'; assert r['self_test']['engine']==-1; assert set(r['environment'])=={'runtime','schema','service','registered_build','profile_enabled','chinese_language'}; assert all(v in (-1,0,1) for v in r['environment'].values()); assert r['fixed_quality_probe']['correction_total']==0; assert all(v==0 for v in r['events'].values()); assert len(list(csv.reader(io.StringIO(z.read('performance.csv').decode()))))==1"
+      - name: Verify populated production diagnostic report (Windows)
+        if: runner.os == 'Windows'
+        run: python -c "import zipfile,json,csv,io; z=zipfile.ZipFile('NativeIME/build/report-smoke/nativeime-report-capture-smoke.zip'); assert z.testzip() is None; assert z.namelist()==['summary.json','performance.csv']; r=json.loads(z.read('summary.json')); e=r['events']; assert e['commit']==2 and e['ipc_ok']==1 and e['ipc_total_ms']==7 and e['candidate_latency_count']==1 and e['candidate_21_30_ms']==1; rows=list(csv.DictReader(io.StringIO(z.read('performance.csv').decode()))); assert len(rows)>=2 and all(int(x['ui_working_set_bytes'])>0 for x in rows); assert rows[-1]['ui_cpu_one_core_pct']!=''"
+      - name: Upload native input lab (not an installer)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeIME-InputLab-windows-x64
+          path: NativeIME/build/Release/NativeIME.InputLab.exe
+          if-no-files-found: error
+      - name: Configure experimental TSF (disposable registration test)
+        if: runner.os == 'Windows'
+        run: cmake -S NativeIME -B NativeIME/build-experimental -DNATIVEIME_EXPERIMENTAL_TSF=ON -DNATIVEIME_DISPOSABLE_REGISTRATION_TEST=ON
+      - name: Build experimental TSF
+        if: runner.os == 'Windows'
+        run: cmake --build NativeIME/build-experimental --config Release --parallel
+      - name: Test experimental COM, registration and session contracts
+        if: runner.os == 'Windows'
+        run: ctest --test-dir NativeIME/build-experimental -C Release --output-on-failure
+      - name: Build real Rime on Windows
+        if: runner.os == 'Windows'
+        run: cmake --build NativeIME/build-rime-win --config Release --parallel
+      - name: Test real Rime on Windows
+        if: runner.os == 'Windows'
+        run: ctest --test-dir NativeIME/build-rime-win -C Release --output-on-failure
+      - name: Upload Windows desktop verification host (not an installer)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeIME-DesktopLab-windows-x64
+          path: NativeIME/build/Release/NativeIME.DesktopLab.exe
+          if-no-files-found: error
+      - name: Stage first-party experimental desktop binaries (not an installer)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = "NativeIME/desktop-candidate"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item "NativeIME/build-experimental/Release/NativeIME.TSF.dll" $dest
+          Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineService.exe" $dest
+          Copy-Item "NativeIME/build-rime-win/Release/NativeIME.EngineSupervisor.exe" $dest
+          Copy-Item "NativeIME/build-rime-win/Release/NativeIME.Session.exe" $dest
+          Copy-Item "NativeIME/build/Release/NativeIME.DesktopLab.exe" $dest
+          Copy-Item "NativeIME/build/Release/NativeIME.exe" $dest
+          Copy-Item "NativeIME/tests/DIAGNOSTICS.md" $dest
+          Copy-Item "NativeIME/build/Release/NativeIME.TsfDesktopE2E.exe" $dest
+          Copy-Item "NativeIME/tests/DESKTOP-ACCEPTANCE.md" $dest
+      - name: Assemble Alpha preparation and rollback entry points
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = "NativeIME/desktop-candidate"
+          & "NativeIME/tools/Test-AlphaComponents.ps1"
+          Copy-Item "NativeIME/tools/Prepare-Alpha.ps1","NativeIME/tools/Install-Alpha.ps1","NativeIME/tools/Alpha-Components.ps1","NativeIME/tests/ALPHA-LAB.md" $dest
+          Copy-Item "NativeIME/tools/Test-AlphaPackage.ps1" $dest
+          & "NativeIME/tools/New-AlphaManifest.ps1" -PackageRoot $dest
+          & "NativeIME/tools/Test-AlphaPackage.ps1" -PackageRoot $dest
+          $lab = Join-Path $env:RUNNER_TEMP "nativeime-prepared-alpha"
+          Copy-Item $dest $lab -Recurse
+          & "$lab/Prepare-Alpha.ps1" -IsolatedVm
+          & "$lab/Test-AlphaPackage.ps1" -PackageRoot $lab -Prepared
+          & "$lab/NativeIME.Session.exe" --engine-only-check --shared "$lab/shared" --user "$env:RUNNER_TEMP/alpha-prepared-user" --rime-dll "$lab/runtime/rime.dll"
+          if ($LASTEXITCODE -ne 0) { throw "Prepared Alpha engine failed: $LASTEXITCODE" }
+          # Registration, process-scoped activation, input and rollback run only
+          # in this disposable Windows runner; no default profile is changed.
+          try {
+            # The PowerShell script throws on failure; it is not a native command.
+            & "$lab/Install-Alpha.ps1" -Action Install -IsolatedVm
+            # Do not download a language capability or change the default input method.
+            # Only the explicitly disposable CI route may try a locally available locale.
+            $installed = Join-Path $env:ProgramFiles 'NativeIME-AlphaLab'
+            & "$installed/NativeIME.Session.exe" --ci-desktop-check --shared "$installed/shared" --user "$env:RUNNER_TEMP/alpha-desktop-user" --rime-dll "$installed/runtime/rime.dll"
+            $desktop = $LASTEXITCODE
+            if ($desktop -eq 77) { Write-Host "BLOCKED: interactive desktop or Chinese locale unavailable; no actual TSF pass claimed." }
+            elseif ($desktop -ne 0) { throw "Actual TSF desktop verification failed: $desktop" }
+            else { Write-Host "PASS: installed-path real TSF candidate, key, mode and focus verification." }
+          } finally {
+            $installed = Join-Path $env:ProgramFiles 'NativeIME-AlphaLab'
+            if (Test-Path "$installed/alpha-owned.json") {
+              # Do not reuse a previous native verifier's exit code (e.g. 77).
+              & "$lab/Install-Alpha.ps1" -Action Remove -IsolatedVm
+              if (Test-Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{9D61A6D1-2C5E-4B6B-9C8A-7A8E1F2D1A10}") {
+                throw "NativeIME COM registration remains after rollback."
+              }
+              if (-not (Test-Path "$installed/NativeIME.exe")) { throw "Protected files were unexpectedly removed during rollback." }
+            }
+          }
+          Write-Host "Alpha preparation, package integrity, real engine, COM registration and unregister/rollback verified. Desktop result is separate."
+          # An explicitly reported desktop BLOCKED is not a deployment failure.
+          # Unexpected verifier failures throw above; no pass is inferred.
+          exit 0
+      - name: Upload first-party experimental desktop candidate
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NativeIME-DesktopCandidate-windows-x64
+          path: NativeIME/desktop-candidate/
+          if-no-files-found: error
+  real-rime:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated CI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librime-dev rime-data-luna-pinyin rime-prelude rime-essay
+          dpkg-query -W librime-dev rime-data-luna-pinyin
+      - name: Configure real Rime provider
+        run: cmake -S NativeIME -B NativeIME/build-rime -DNATIVEIME_WITH_RIME=ON -DNATIVEIME_RIME_DATA_DIR=/usr/share/rime-data -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build NativeIME/build-rime --parallel
+      - name: Test real Rime and core
+        run: ctest --test-dir NativeIME/build-rime --output-on-failure

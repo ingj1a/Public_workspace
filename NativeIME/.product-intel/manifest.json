@@ -1,0 +1,223 @@
+{
+  "project": "NativeIME",
+  "phase": "phase-0",
+  "status": "in_progress",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "priority": "P0",
+      "status": "PARTIAL",
+      "note": "Windows registration and removal passed; actual profile activation remains unverified."
+    },
+    {
+      "id": "REQ-002",
+      "priority": "P0",
+      "status": "PARTIAL",
+      "note": "Portable session passed CI. Experimental inline TSF preedit/commit implemented, default OFF; desktop E2E pending."
+    },
+    {
+      "id": "REQ-003",
+      "priority": "P0",
+      "status": "PARTIAL",
+      "note": "Real Windows Rime and cross-process queries passed; full dictionary integration into live TSF unverified."
+    },
+    {
+      "id": "REQ-004",
+      "priority": "P0",
+      "status": "NOT_RUN"
+    },
+    {
+      "id": "REQ-005",
+      "priority": "P0",
+      "status": "PARTIAL",
+      "note": "TSF probe passes all keys through by design; shortcut matrix not run on Windows"
+    },
+    {
+      "id": "REQ-006",
+      "priority": "P0",
+      "status": "PARTIAL",
+      "note": "IPC fault recovery verified; live TSF fail-open not yet verified."
+    },
+    {
+      "id": "REQ-007",
+      "priority": "P0",
+      "status": "PARTIAL",
+      "note": "Portable core has no network dependency; whole IME not implemented"
+    }
+  ],
+  "tests": [
+    {
+      "id": "TEST-CORE-001",
+      "status": "PASS",
+      "scope": "Windows/Linux seed and session tests passed at 9b7330e; run 45583478649."
+    },
+    {
+      "id": "TEST-TSF-001",
+      "status": "PARTIAL",
+      "scope": "Actual disposable CI COM/TSF profile registration, profile description, CoCreateInstance and removal PASS; profile activation and physical keyboard E2E NOT_RUN.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45741739491/job/139648142925"
+    },
+    {
+      "id": "TEST-TSF-002",
+      "status": "NOT_RUN",
+      "scope": "Interactive verifier source added: actual registered profile, TSF keyboard manager, native EDIT composition, real popup selection, exact readback via TSF edit session; execution NOT_RUN"
+    },
+    {
+      "id": "TEST-TSF-003",
+      "status": "NOT_RUN",
+      "scope": "Chinese/English mode transitions"
+    },
+    {
+      "id": "TEST-TSF-004",
+      "status": "NOT_RUN",
+      "scope": "Host shortcut pass-through on Windows"
+    },
+    {
+      "id": "TEST-TSF-005",
+      "status": "NOT_RUN",
+      "scope": "Engine disconnect fail-open"
+    },
+    {
+      "id": "TEST-TSF-COM",
+      "status": "PASS",
+      "scope": "DLL load, exported class factory, interface lifetime and null-context pass-through at 9b7330e",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45583478649"
+    },
+    {
+      "id": "TEST-TSF-EXP",
+      "status": "PASS",
+      "scope": "Experimental build and COM smoke only; live E2E NOT_RUN",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
+    },
+    {
+      "id": "TEST-RIME",
+      "status": "PASS",
+      "scope": "Real Windows official 1.13.1 DLL and Linux candidate smoke passed; not TSF production integration.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45618292448"
+    },
+    {
+      "id": "TEST-APP-POLICY",
+      "status": "PASS",
+      "scope": "Synthetic policy tests only (Windows and Linux); actual application detection NOT_RUN."
+    },
+    {
+      "id": "TEST-POPUP",
+      "status": "NOT_RUN",
+      "scope": "Standalone InputLab builds; new experimental TSF native keyboard popup pending CI and live GUI checks."
+    },
+    {
+      "id": "TEST-FOCUS-WIN",
+      "status": "PASS",
+      "scope": "Native Win32 edit/password/read-only/disabled/unknown control tests, not third-party app focus coverage.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
+    },
+    {
+      "id": "TEST-IPC-001",
+      "status": "PASS",
+      "scope": "Versioned bounded IPC frame round-trip, malformed frame rejection; CI pending.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45631282279"
+    },
+    {
+      "id": "TEST-IPC-TSF",
+      "status": "PARTIAL",
+      "scope": "Async readiness/disconnect/reconnect and portable input sessions passed; actual active TSF keyboard routing NOT_RUN",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45747247257/job/139666176684"
+    },
+    {
+      "id": "TEST-IPC-E2E",
+      "status": "PASS",
+      "scope": "Real service child process, peer identity mismatch, malformed request, process crash, restart, graceful stop and stalled read at 61cd2f4",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45739769886/job/139641707741"
+    },
+    {
+      "id": "TEST-NATIVE-CONTROL",
+      "status": "PASS",
+      "scope": "Real Rime + production async client + native popup + Win32 EDIT insertion (not TSF edit session) at 109cb98",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45740650958/job/139644518268"
+    },
+    {
+      "id": "TEST-SUPERVISOR",
+      "status": "PASS",
+      "scope": "Real supervisor automatic service restart and clean stop plus engine readiness/disconnect/reconnect integration at d902751",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45747247257/job/139666176684"
+    },
+    {
+      "id": "TEST-DESKTOP-ROUTE",
+      "status": "NOT_RUN",
+      "scope": "Verifier compiled at 87b751d; active-profile route NOT_RUN. New non-mutating preflight added.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45747856866/job/139668177535"
+    },
+    {
+      "id": "TEST-SESSION-START",
+      "status": "PASS",
+      "scope": "Actual startup/shutdown passed at ac1ab60; desktop prerequisites blocked by Chinese language not active.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45750470167/job/139676754308"
+    },
+    {
+      "id": "TEST-DIAG-001",
+      "status": "PARTIAL",
+      "scope": "Shared counter capture/start/stop/reset passed at 5191c84; built-in page, export UI and live TSF not yet verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45751423410/job/139679862719"
+    },
+    {
+      "id": "TEST-MAIN-UI",
+      "status": "PASS",
+      "scope": "6fbfd01: actual child page ownership, home, diagnostics and setup navigation passed; interactive GUI not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
+    },
+    {
+      "id": "TEST-MODE-SWITCH",
+      "status": "PARTIAL",
+      "scope": "Synthetic shortcut policy passed; actual TSF mode switch NOT_RUN.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45757411697/job/139699220614"
+    },
+    {
+      "id": "TEST-DIAG-ZIP",
+      "status": "PARTIAL",
+      "scope": "6fbfd01: actual product empty-report ZIP serializer independently validated; new populated capture smoke pending; GUI save dialog not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
+    },
+    {
+      "id": "TEST-PROFESSIONAL",
+      "status": "PASS",
+      "scope": "Portable exact vocabulary tests and real Rime integration passed at 33fac82; desktop typing not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45768226008/job/139734246585"
+    },
+    {
+      "id": "TEST-JOB-METRICS",
+      "status": "PARTIAL",
+      "scope": "Compiled at 33fac82; actual performance sampling/export not exercised.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45768226008/job/139734246585"
+    },
+    {
+      "id": "TEST-CORRECTION",
+      "status": "PASS",
+      "scope": "All fixed typo cases passed real Rime/IPC after bounded search and common lexicon supplement at 9d4f2a2; general accuracy not measured.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45773729655/job/139752258202"
+    },
+    {
+      "id": "TEST-ALPHA-PREPARE",
+      "status": "PASS",
+      "scope": "6fbfd01: all six pinned sources, preparation, real engine start, actual installation and registration rollback passed on disposable Windows CI; files intentionally retained.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
+    },
+    {
+      "id": "TEST-INPUT-PREFERENCES",
+      "status": "PARTIAL",
+      "scope": "6fbfd01: preference encoding, candidate first/last, main setup page smoke passed; real TSF preference behavior not yet run.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/job/139764210737"
+    },
+    {
+      "id": "TEST-ALPHA-PACKAGE",
+      "status": "PARTIAL",
+      "scope": "Independent downloaded 6fbfd01 PR artifact SHA256 matched GitHub; ZIP CRC, 7 binary manifest hashes and PE x64 verified. New prepared inventory validator not run.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45777375018/artifacts/15097265666"
+    },
+    {
+      "id": "TEST-TSF-INTERACTIVE-EXPANDED",
+      "status": "NOT_RUN",
+      "scope": "Installed-path CI route corrected; manual verifier no longer changes saved preferences or locale; new test pending."
+    }
+  ],
+  "evidenceLevel": "6fbfd01 Windows 13/13, 14/14, 16/16 passed and deployment/rollback passed; independent ZIP/PE inspection passed. New installed-path TSF route and populated report pending; real desktop not accepted."
+}
