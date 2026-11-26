@@ -7,6 +7,8 @@
 #include <sstream>
 #include <vector>
 #include <iomanip>
+#include <locale>
+#include <optional>
 #include <psapi.h>
 #include "core/zip_store.hpp"
 #include "diagnostics.hpp"
@@ -26,7 +28,15 @@ std::future<int> probe;
 HANDLE verifier=nullptr;
 int engineResult=-1,desktopResult=-1,preflightResult=-1;
 ULONGLONG engineMs=0;
-struct Perf { ULONGLONG elapsed=0; double cpu=0; SIZE_T workingSet=0; };
+struct Perf {
+    ULONGLONG elapsed=0;
+    std::optional<double> cpu,engineCpu;
+    SIZE_T workingSet=0;
+    std::optional<SIZE_T> enginePeakCommit;
+};
+HANDLE engineJob=nullptr;
+std::optional<ULONGLONG> previousJobCpu;
+ULONGLONG previousJobTick=0;
 std::vector<Perf> samples;
 ULONGLONG captureStarted=0,lastSample=0,lastCpu=0;
 bool ReadCpu(ULONGLONG& value){
@@ -37,8 +47,21 @@ void SamplePerformance(){
  if(!capture.Active())return;const auto now=GetTickCount64();if(lastSample&&now-lastSample<1000)return;
  PROCESS_MEMORY_COUNTERS_EX mem{};mem.cb=sizeof(mem);ULONGLONG cpu=0;
  if(!GetProcessMemoryInfo(GetCurrentProcess(),reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&mem),sizeof(mem))||!ReadCpu(cpu))return;
- double pct=0;if(lastSample&&now>lastSample&&cpu>=lastCpu)pct=100.0*double(cpu-lastCpu)/10000.0/double(now-lastSample);
- samples.push_back({now-captureStarted,pct,mem.WorkingSetSize});if(samples.size()>1800)samples.erase(samples.begin(),samples.begin()+300);
+ Perf sample;sample.elapsed=now-captureStarted;sample.workingSet=mem.WorkingSetSize;
+ if(lastSample&&now>lastSample&&cpu>=lastCpu)sample.cpu=100.0*double(cpu-lastCpu)/10000.0/double(now-lastSample);
+ if(engineJob){
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION a{};
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    if(QueryInformationJobObject(engineJob,JobObjectBasicAccountingInformation,&a,sizeof(a),nullptr)){
+        const auto total=static_cast<ULONGLONG>(a.TotalUserTime.QuadPart+a.TotalKernelTime.QuadPart);
+        if(previousJobCpu&&now>previousJobTick&&total>=*previousJobCpu)
+            sample.engineCpu=100.0*double(total-*previousJobCpu)/10000.0/double(now-previousJobTick);
+        previousJobCpu=total;previousJobTick=now;
+    }else{previousJobCpu.reset();previousJobTick=0;}
+    if(QueryInformationJobObject(engineJob,JobObjectExtendedLimitInformation,&limits,sizeof(limits),nullptr))
+        sample.enginePeakCommit=limits.PeakJobMemoryUsed;
+ }else{previousJobCpu.reset();previousJobTick=0;}
+ samples.push_back(sample);if(samples.size()>1800)samples.erase(samples.begin(),samples.begin()+300);
  lastSample=now;lastCpu=cpu;
 }
 std::wstring Base(){return std::filesystem::path(ModulePath(nullptr)).parent_path().wstring();}
@@ -60,7 +83,7 @@ void Refresh(){
         <<L"\r\nIPC 平均耗时 ";
     if(values[8]+values[9])text<<static_cast<double>(values[10])/(values[8]+values[9])<<L" ms";
     else text<<L"—";
-    text<<L"     引擎重启 "<<values[11];
+    text<<L"     引擎重启 "<<values[11]<<L"\r\n候选延迟采样 "<<values[12]<<L"     中/英文切换 "<<values[22]<<L" / "<<values[21];
     SetWindowTextW(details,text.str().c_str());
     std::wstring checks=L"真实引擎："+std::wstring(Result(engineResult))+L"    桌面前置："+Result(preflightResult)+L"    TSF 实测："+Result(desktopResult);
     if(probe.valid()||verifier)checks+=L"  （检测中）";
@@ -95,18 +118,26 @@ void SelfCheck(){
     if(!LaunchVerifier(false))preflightResult=1;
 }
 std::string PerformanceCsv(){
- std::ostringstream out;out<<"elapsed_ms,process_cpu_one_core_pct,working_set_bytes\n";
- for(const auto& s:samples)out<<s.elapsed<<","<<std::fixed<<std::setprecision(2)<<s.cpu<<","<<s.workingSet<<"\n";
+ std::ostringstream out;out.imbue(std::locale::classic());
+ out<<"elapsed_ms,ui_cpu_one_core_pct,ui_working_set_bytes,engine_job_cpu_one_core_pct,engine_job_peak_commit_bytes\n";
+ for(const auto& s:samples){
+     out<<s.elapsed<<","<<std::fixed<<std::setprecision(2);
+     if(s.cpu)out<<*s.cpu;
+     out<<","<<s.workingSet<<",";
+     if(s.engineCpu)out<<*s.engineCpu;
+     out<<",";if(s.enginePeakCommit)out<<*s.enginePeakCommit;
+     out<<"\n";
+ }
  return out.str();
 }
 std::string Report(){
     auto v=capture.Read();std::ostringstream out;
-    out<<"{\n  \"schema\":1,\n  \"build\":\"" NATIVEIME_BUILD_ID "\",\n  \"platform\":\"windows-x64\",\n"
+    out<<"{\n  \"schema\":2,\n  \"build\":\"" NATIVEIME_BUILD_ID "\",\n  \"platform\":\"windows-x64\",\n"
         <<"  \"duration_ms\":"<<capture.Duration()<<",\n  \"capture\":\"aggregate_only\",\n  \"events\":{";
     for(unsigned i=0;i<d::Count;++i){if(i)out<<',';out<<"\n    \""<<d::Names[i]<<"\":"<<v[i];}
     out<<"\n  },\n  \"self_test\":{\"engine\":"<<engineResult<<",\"engine_probe_ms\":"<<engineMs
        <<",\"desktop_preflight\":"<<preflightResult<<",\"tsf_desktop\":"<<desktopResult
-       <<"},\n  \"notes\":\"-1 not run; 0 pass; 77 blocked; other codes fail. IPC timing is not end-to-end input latency. No user text collected.\"\n}\n";
+       <<"},\n  \"notes\":\"-1 not run; 0 pass; 77 blocked; other codes fail. Candidate latency measures submission to popup Show success, not compositor paint. Engine job CPU includes owned session, supervisor and engine descendants; peak commit is not working set. Blank samples unavailable. Host TSF resource usage excluded. No user text collected.\"\n}\n";
     return out.str();
 }
 void Save(){
@@ -144,9 +175,9 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             SetTimer(h,1,250,nullptr);Refresh();return 0;
         case WM_COMMAND:
             switch(LOWORD(w)){
-            case Start:if(!capture.Start())MessageBoxW(h,L"无法开始：可能已有采集会话。",L"NativeIME",MB_OK);else{samples.clear();captureStarted=lastSample=GetTickCount64();ReadCpu(lastCpu);}break;
+            case Start:if(!capture.Start())MessageBoxW(h,L"无法开始：可能已有采集会话。",L"NativeIME",MB_OK);else{samples.clear();previousJobCpu.reset();previousJobTick=0;captureStarted=lastSample=GetTickCount64();if(!ReadCpu(lastCpu))lastSample=0;}break;
             case Stop:if(!capture.Stop())MessageBoxW(h,L"暂时无法停止，请重试。",L"NativeIME",MB_OK);break;
-            case Clear:if(capture.Clear()){engineResult=desktopResult=preflightResult=-1;engineMs=0;samples.clear();captureStarted=lastSample=lastCpu=0;}break;
+            case Clear:if(capture.Clear()){engineResult=desktopResult=preflightResult=-1;engineMs=0;samples.clear();previousJobCpu.reset();previousJobTick=0;captureStarted=lastSample=lastCpu=0;}break;
             case Export:Save();break;
             case Check:SelfCheck();break;
             case Desktop:
@@ -180,6 +211,9 @@ HWND CreateDiagnosticsPage(HWND parent,HINSTANCE instance){
     if(!RegisterClassW(&wc)&&GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return nullptr;
     return CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,L"",WS_CHILD|WS_CLIPCHILDREN,
         0,0,680,480,parent,nullptr,instance,nullptr);
+}
+void SetDiagnosticsEngineJob(HANDLE job) noexcept {
+    engineJob=job;previousJobCpu.reset();previousJobTick=0;
 }
 bool CloseDiagnosticsPage() noexcept {
     if(verifier||probe.valid())return false;

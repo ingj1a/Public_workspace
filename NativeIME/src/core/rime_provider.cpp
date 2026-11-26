@@ -1,4 +1,5 @@
 #include "core/rime_provider.hpp"
+#include "core/professional_lexicon.hpp"
 #include <cstring>
 #include <filesystem>
 #include <rime_api.h>
@@ -100,6 +101,7 @@ QueryResult RimeProvider::Query(const std::wstring& input){
         api->free_context(&ctx);
     }
     api->clear_composition(p.session);
+    AddProfessionalCandidate(out);
     return out;
 }
 }

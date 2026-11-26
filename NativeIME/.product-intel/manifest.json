@@ -161,19 +161,32 @@
     },
     {
       "id": "TEST-MAIN-UI",
-      "status": "NOT_RUN",
-      "scope": "Actual native main child page ownership and navigation smoke; no interactive GUI acceptance."
+      "status": "PASS",
+      "scope": "In-process navigation and child ownership passed; interactive GUI not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45757411697/job/139699220614"
     },
     {
       "id": "TEST-MODE-SWITCH",
-      "status": "NOT_RUN",
-      "scope": "Ctrl+Shift+F12 scoped mode switch; synthetic shortcut eligibility tests added; live TSF desktop test pending."
+      "status": "PARTIAL",
+      "scope": "Synthetic shortcut policy passed; actual TSF mode switch NOT_RUN.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45757411697/job/139699220614"
     },
     {
       "id": "TEST-DIAG-ZIP",
+      "status": "PARTIAL",
+      "scope": "ZIP fixture and independent Python zipfile validation passed; actual UI export not verified.",
+      "evidence": "https://github.com/ingj1a/Public_workspace/actions/runs/45757411697/job/139699220614"
+    },
+    {
+      "id": "TEST-PROFESSIONAL",
       "status": "NOT_RUN",
-      "scope": "ZIP32 writer CRC and independent standard-library archive validation added; built-in GUI export and performance sampler pending CI."
+      "scope": "Original curated exact-spelling supplement; portable tests and real Rime smoke added."
+    },
+    {
+      "id": "TEST-JOB-METRICS",
+      "status": "NOT_RUN",
+      "scope": "Owned engine job accounting and peak commit export; actual sampling pending."
     }
   ],
-  "evidenceLevel": "Prior main UI build 5dac725 passed; new scoped mode switch and ZIP/performance sampling at acb395a/8e699cb pending Windows CI; interactive desktop TSF not run."
+  "evidenceLevel": "acbbb11: Windows 9/9, 10/10, 12/12 passed. Professional candidate and job metrics changes pending CI. Interactive desktop TSF NOT_RUN."
 }

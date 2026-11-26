@@ -20,6 +20,7 @@ bool HasSession(){return session!=nullptr;}
 void CloseHandles(){
     if(session)CloseHandle(session);session=nullptr;
     if(stopEvent)CloseHandle(stopEvent);stopEvent=nullptr;
+    SetDiagnosticsEngineJob(nullptr);
     if(job)CloseHandle(job);job=nullptr;
     stopping=false;
 }
@@ -88,6 +89,7 @@ bool StartSession(){
     bool ok=AssignProcessToJobObject(job,session)&&ResumeThread(pi.hThread)!=static_cast<DWORD>(-1);
     CloseHandle(pi.hThread);
     if(!ok){TerminateProcess(session,98);CloseHandles();return false;}
+    SetDiagnosticsEngineJob(job);
     everStarted=true;lastExit=0;return true;
 }
 LRESULT CALLBACK HomeProc(HWND h,UINT msg,WPARAM w,LPARAM l){
@@ -112,7 +114,7 @@ LRESULT CALLBACK Proc(HWND h,UINT msg,WPARAM w,LPARAM l){
             engineState=Control(home,L"STATIC",L"",0,0,24,105,630,60);
             startButton=Control(home,L"BUTTON",L"启动引擎",BS_PUSHBUTTON|WS_TABSTOP,StartEngine,24,180,140,34);
             stopButton=Control(home,L"BUTTON",L"停止引擎",BS_PUSHBUTTON|WS_TABSTOP,StopEngine,174,180,140,34);
-            Control(home,L"STATIC",L"诊断与测试是内置页面。采集默认关闭，不记录输入内容。",0,0,24,246,630,50);
+            Control(home,L"STATIC",L"实验中英文切换：Ctrl + Shift + F12（仅普通文本框且无组合输入）。\r\n诊断与测试内置，采集默认关闭。",0,0,24,246,630,50);
             Control(home,L"STATIC",L"本构建不自动注册输入法、不修改默认输入法、不添加开机启动项。仅限隔离测试环境。",0,0,24,310,630,60);
             if(!engineState||!startButton||!stopButton)return -1;
             SetTimer(h,1,250,nullptr);ShowPage(false);Refresh();return 0;

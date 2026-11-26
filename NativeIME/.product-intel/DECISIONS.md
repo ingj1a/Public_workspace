@@ -53,3 +53,6 @@ User explicitly rejected a standalone diagnostics executable. NativeIME.exe owns
 
 ## DEC-010 — Diagnostics and input features progress together
 Continue diagnostics as an embedded page in NativeIME.exe while advancing the TSF product. Experimental manual language toggle is Ctrl+Shift+F12, restricted to writable supported edit controls and idle composition. Diagnostics report includes bounded process CPU/working-set sampling and ZIP32 bundle; CPU scope is the NativeIME UI process only. No user input content captured. Both changes require Windows CI and real desktop acceptance before enabling by default.
+
+## DEC-011 — Parallel product vocabulary and owned-job diagnostics
+Small original exact-spelling professional vocabulary is added after real Rime lookup; preserve the first two existing candidates and never auto-commit or infer app domain. No external dictionary licensing expansion. For resources use only the main app's own engine Job, not arbitrary process scans; peak commit is explicitly distinct from current working set. Both are experimental and require real Windows acceptance; no default profile change.

@@ -20,6 +20,12 @@ int main(int argc,char** argv){
         nativeime::core::InputSession session([&](const std::wstring& input){return rime.Query(input);});
         for(auto ch:std::wstring(L"nihao")) session.Handle({nativeime::core::Key::Letter,ch});
         if(session.Candidates().empty()||session.Handle({nativeime::core::Key::Space}).commit.empty()) return 3;
+        for(const auto& expected:std::vector<std::pair<std::wstring,std::wstring>>{
+            {L"jianqiemengban",L"剪切蒙版"},{L"faxiantietu",L"法线贴图"},{L"yibutongxin",L"异步通信"}}){
+            auto terms=rime.Query(expected.first);bool present=false;
+            for(const auto& c:terms.candidates)if(c.text==expected.second)present=true;
+            if(!present||terms.candidates.size()>9){std::cerr<<"Professional candidate missing\n";return 5;}
+        }
         std::cout<<"Real Rime candidate + session smoke passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 4;}
 }

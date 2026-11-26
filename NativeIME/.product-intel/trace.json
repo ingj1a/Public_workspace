@@ -43,7 +43,8 @@
         "dictionary"
       ],
       "tests": [
-        "TEST-CORE-001"
+        "TEST-CORE-001",
+        "TEST-PROFESSIONAL"
       ],
       "evidence": [
         "NativeIME/tests/core_tests.cpp"
@@ -58,7 +59,8 @@
         "app-context"
       ],
       "tests": [
-        "TEST-TSF-003"
+        "TEST-TSF-003",
+        "TEST-MODE-SWITCH"
       ],
       "evidence": []
     },
